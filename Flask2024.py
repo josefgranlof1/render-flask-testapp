@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://flask_render_postgresql_2024_user:gRdI3LBZ8iD2EBioL5CffkL2lGerrQkv@dpg-csbajn3v2p9s739quus0-a.frankfurt-postgres.render.com/flask_render_postgresql_2024'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://wingittest_render_example_user:6n7CWfgDjrlX7dP4IFmfEs4XK8mAPg1X@dpg-ctabsv1u0jms73eus66g-a.frankfurt-postgres.render.com/wingittest_render_example'
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -423,5 +423,5 @@ def get_chats():
 
     
 
-# if __name__ == '__main__':
-#     app.run()
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080)
