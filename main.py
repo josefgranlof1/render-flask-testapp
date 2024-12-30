@@ -6,16 +6,33 @@ from flask_socketio import SocketIO, join_room, send, emit
 import os
 from werkzeug.utils import secure_filename
 
+# Load environment variables from a .env file (recommended for security)
+load_dotenv()
+
 app = Flask(__name__)
+
+# Database configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://postgres:1m66qxuwRsZkpent@db.pkdozdddeutactuhwpld.supabase.co:5432/postgres"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # Optional, to disable warnings
+# Supabase Key (retrieved from environment variables)
+SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBrZG96ZGRkZXV0YWN0dWh3cGxkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU0ODAxNzYsImV4cCI6MjA1MTA1NjE3Nn0.Tn6nu1ZH7dOJniVPaTd_ecZqNWOBAcymwYpWpgmuvGE"
+supabase_key = os.getenv("SUPABASE_KEY")
 
+# Check if the key is loaded (optional, for debugging)
+if not supabase_key:
+    raise ValueError("Supabase key is not set. Please define SUPABASE_KEY in your environment variables.")
+
+# Initialize extensions
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
 @app.route('/')
 def index():
-    return "Connected to Supabase!"
+    # Include Supabase key in the response for demonstration (remove in production)
+    return jsonify({
+        "message": "Connected to Supabase!",
+        "supabase_key": supabase_key[:10] + "..."  # Partial key for demonstration
+    })
 
 # Set the upload folder configuration
 app.config['UPLOAD_FOLDER'] = 'uploads'
