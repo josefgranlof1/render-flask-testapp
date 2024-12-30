@@ -7,9 +7,15 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://wingittest_render_example_user:6n7CWfgDjrlX7dP4IFmfEs4XK8mAPg1X@dpg-ctabsv1u0jms73eus66g-a.frankfurt-postgres.render.com/wingittest_render_example'
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://postgres:1m66qxuwRsZkpent@db.pkdozdddeutactuhwpld.supabase.co:5432/postgres"
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # Optional, to disable warnings
+
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
+
+@app.route('/')
+def index():
+    return "Connected to Supabase!"
 
 # Set the upload folder configuration
 app.config['UPLOAD_FOLDER'] = 'uploads'
