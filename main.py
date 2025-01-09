@@ -121,6 +121,8 @@ def postData():
         print(e)
         return jsonify({'error': 'Internal Server Error'}), 500
 
+
+
 # I added this 2025/01/09
 @app.route('/preference', methods=['POST'])
 def postPreferenceData():
@@ -146,6 +148,7 @@ def postPreferenceData():
         if userPreferenceDetails:
             # Update existing user details
             userPreferenceDetails.preference = preference
+            userPreferenceDetails.email = newEmail
 
             message = "Updated user details"
 
@@ -153,7 +156,8 @@ def postPreferenceData():
             # Add new user details
             userPreferenceDetails = PreferenceData(
                user_auth_id=user_auth_id,
-               preference = preference
+               preference = preference,
+               email = newEmail
 
             )
 
@@ -165,6 +169,8 @@ def postPreferenceData():
 
     except Exception as e:
         return jsonify({'error': 'Internal Server Error'}), 500
+
+
 
 # POSTING USER DATA TO DATABASE
 @app.route('/userData', methods=['POST'])
