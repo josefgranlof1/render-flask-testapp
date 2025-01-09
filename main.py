@@ -33,7 +33,7 @@ class Task(db.Model):
     password = db.Column(db.String, nullable=False)
 
 # I added this 2025/01/09
-class Preference(db.Model):
+class PreferenceData(db.Model):
     __tablename__ = 'preference'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
@@ -127,27 +127,44 @@ def postPreferenceData():
     try:
         # Extract data from the request
         data = request.get_json
-        user_auth_id = data.get('user_auth_id')
-        preference_text = data.get('preference')
+        newEmail = data['email']
+        user = Task.query.filter_by(email=newEmail).first()
 
         # Validate the input
         if not user_auth_id or not preference_text:
             return jsonify({"error": "Missing required fields"}), 400
 
         # Create a new Preference instance
-        new_preference = Preference(
-            user_auth_id=user_auth_id,
-            preference=preference_text
-        )
+        user_auth_id = user.id
+        preference = data['preference']
 
-        # Add to the database session and commit
-        db.session.add(new_preference)
+
+
+        # Check if user details already exist
+        userPreferenceDetails = UserData.query.filter_by(user_auth_id=user_auth_id).first()
+
+        if userPreferenceDetails:
+            # Update existing user details
+            userPreferenceDetails.name = preference
+
+            message = "Updated user details"
+
+        else:
+            # Add new user details
+            userPreferenceDetails = PreferenceData(
+               user_auth_id=user_auth_id,
+               preference = preference
+
+            )
+
+            db.session.add(userPreferenceDetails)
+            message = "Added user details"
+
         db.session.commit()
+        return jsonify({'message': message}), 201
 
-        return jsonify({"message": "Preference added successfully", "id": new_preference.id}), 201
     except Exception as e:
-        db.session.rollback()  # Rollback in case of any error
-        return jsonify({"error": str(e)}), 500
+        return jsonify({'error': 'Internal Server Error'}), 500
 
 # POSTING USER DATA TO DATABASE
 @app.route('/userData', methods=['POST'])
