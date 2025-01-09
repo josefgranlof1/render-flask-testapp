@@ -32,6 +32,14 @@ class Task(db.Model):
     email = db.Column(db.String(200), unique=True,nullable=False)
     password = db.Column(db.String, nullable=False)
 
+# I added this 2025/01/09
+class Preference(db.Model):
+    __tablename__ = 'preference'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
+    preference = db.Column(db.String(200))
+
+
 
 class Message(db.Model):
     __tablename__ = 'messages'
@@ -110,7 +118,33 @@ def postData():
         print(e)
         return jsonify({'error': 'Internal Server Error'}), 500
 
+# I added this 2025/01/09
+@app.route('/add_preference', methods=['POST'])
+def add_preference():
+    try:
+        # Extract data from the request
+        data = request.json
+        user_auth_id = data.get('user_auth_id')
+        preference_text = data.get('preference')
 
+        # Validate the input
+        if not user_auth_id or not preference_text:
+            return jsonify({"error": "Missing required fields"}), 400
+
+        # Create a new Preference instance
+        new_preference = Preference(
+            user_auth_id=user_auth_id,
+            preference=preference_text
+        )
+
+        # Add to the database session and commit
+        db.session.add(new_preference)
+        db.session.commit()
+
+        return jsonify({"message": "Preference added successfully", "id": new_preference.id}), 201
+    except Exception as e:
+        db.session.rollback()  # Rollback in case of any error
+        return jsonify({"error": str(e)}), 500
 
 # POSTING USER DATA TO DATABASE
 @app.route('/userData', methods=['POST'])
