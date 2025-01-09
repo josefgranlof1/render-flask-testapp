@@ -145,7 +145,7 @@ def postPreferenceData():
 
         if userPreferenceDetails:
             # Update existing user details
-            userPreferenceDetails.name = preference
+            userPreferenceDetails.preference = preference
 
             message = "Updated user details"
 
