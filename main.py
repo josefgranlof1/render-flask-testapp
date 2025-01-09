@@ -39,6 +39,9 @@ class Preference(db.Model):
     user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     preference = db.Column(db.String(200))
 
+    user = db.relationship('Task', backref=db.backref('pre_ference', lazy=True))
+
+
 
 
 class Message(db.Model):
@@ -120,10 +123,10 @@ def postData():
 
 # I added this 2025/01/09
 @app.route('/add_preference', methods=['POST'])
-def add_preference():
+def postPreferenceData():
     try:
         # Extract data from the request
-        data = request.json
+        data = request.get_json
         user_auth_id = data.get('user_auth_id')
         preference_text = data.get('preference')
 
