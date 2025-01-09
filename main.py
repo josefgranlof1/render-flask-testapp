@@ -122,7 +122,7 @@ def postData():
         return jsonify({'error': 'Internal Server Error'}), 500
 
 # I added this 2025/01/09
-@app.route('/add_preference', methods=['POST'])
+@app.route('/preference', methods=['POST'])
 def postPreferenceData():
     try:
         # Extract data from the request
@@ -141,7 +141,7 @@ def postPreferenceData():
 
 
         # Check if user details already exist
-        userPreferenceDetails = UserData.query.filter_by(user_auth_id=user_auth_id).first()
+        userPreferenceDetails = PreferenceData.query.filter_by(user_auth_id=user_auth_id).first()
 
         if userPreferenceDetails:
             # Update existing user details
