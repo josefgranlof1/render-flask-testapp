@@ -39,10 +39,6 @@ class PreferenceData(db.Model):
     user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     preference = db.Column(db.String(200))
 
-    user = db.relationship('Task', backref=db.backref('pre_ference', lazy=True))
-
-
-
 
 class Message(db.Model):
     __tablename__ = 'messages'
@@ -133,7 +129,7 @@ def postPreferenceData():
         user = Task.query.filter_by(email=newEmail).first()
 
         # Validate the input
-        if not user_auth_id or not preference_text:
+        if not user:
             return jsonify({"error": "Missing required fields"}), 400
 
         # Create a new Preference instance
