@@ -63,6 +63,7 @@ class UserData(db.Model):
     phone_number = db.Column(db.String(50))
     age = db.Column(db.String(10))
     bio = db.Column(db.Text)
+    status = db.Column(db.String(50))
     
     user = db.relationship('Task', backref=db.backref('user_data', lazy=True))
 
@@ -186,7 +187,7 @@ def postUserData():
         phone_number = data['phone_number']
         age = data['age']
         bio = data['bio']
-      
+        status = data['status']
 
         # Check if user details already exist
         userDetails = UserData.query.filter_by(user_auth_id=user_auth_id).first()
@@ -200,6 +201,7 @@ def postUserData():
             userDetails.phone_number = phone_number
             userDetails.age = age
             userDetails.bio = bio
+            userDetails.status = status
          
             message = "Updated user details"
         else:
@@ -212,7 +214,8 @@ def postUserData():
                 hobbies=hobbies,
                 phone_number=phone_number,
                 age=age,
-                bio=bio
+                bio=bio,
+                status=status
             )
             db.session.add(userDetails)
             message = "Added user details"
@@ -330,6 +333,7 @@ def getUserData():
                 'phone_number': userDetails.phone_number,
                 'age': userDetails.age,
                 'bio': userDetails.bio,
+                'status': userDetails.status,
                 'image_url': image_url  # Include the image URL in the response
             }
             users.append(user)
