@@ -119,51 +119,49 @@ def postData():
 
 
 
-# I added this 2025/01/09
+# I added this 2025/01/11
 @app.route('/preference', methods=['POST'])
 def postPreferenceData():
     try:
         # Extract data from the request
-        data = request.get_json
-        newEmail = data['email']
-        user = Task.query.filter_by(email=newEmail).first()
+        data = request.get_json()
+        new_email = data.get('email')
+        preference_text = data.get('preference')
 
-        # Validate the input
-        if not user_auth_id or not preference_text:
+        # Validate input
+        if not new_email or not preference_text:
             return jsonify({"error": "Missing required fields"}), 400
 
-        # Create a new Preference instance
+        # Fetch the user by email
+        user = Task.query.filter_by(email=new_email).first()
+
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
         user_auth_id = user.id
-        preference = data['preference']
 
-
-
-        # Check if user details already exist
+        # Check if the user already has preferences
         userPreferenceDetails = PreferenceData.query.filter_by(user_auth_id=user_auth_id).first()
 
         if userPreferenceDetails:
-            # Update existing user details
-            userPreferenceDetails.preference = preference
-            userPreferenceDetails.email = newEmail
-
-            message = "Updated user details"
-
+            # Update existing preference
+            userPreferenceDetails.preference = preference_text
+            message = "Updated user preference"
         else:
-            # Add new user details
+            # Create new preference
             userPreferenceDetails = PreferenceData(
-               user_auth_id=user_auth_id,
-               preference = preference,
-               email = newEmail
-
+                user_auth_id=user_auth_id,
+                preference=preference_text
             )
-
             db.session.add(userPreferenceDetails)
-            message = "Added user details"
+            message = "Added new user preference"
 
+        # Commit changes to the database
         db.session.commit()
         return jsonify({'message': message}), 201
 
     except Exception as e:
+        print(f"Error: {e}")
         return jsonify({'error': 'Internal Server Error'}), 500
 
 
