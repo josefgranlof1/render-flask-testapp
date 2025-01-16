@@ -337,9 +337,6 @@ def getUserData():
     except Exception as e:
         return jsonify({'error': 'Internal Server Error'}), 500
 
-
-
-
 # USER SIGNIN METHOD
 @app.route('/sign-in', methods=['POST'])
 def sign_in():
