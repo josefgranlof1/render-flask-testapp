@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] ="postgresql://wingsv2_render_example_user:N2QmWUH7EZ7CGGbDy1x6cIyKFDpNxThx@dpg-cu51cptds78s73du6vqg-a.frankfurt-postgres.render.com/wingsv2_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] ="postgresql://wingsv2_render_example_1p8l_user:KWcEVG3m11O3LYNbwQ5w9LSu0P1ELEMi@dpg-cu52l9aj1k6c73aklbrg-a.frankfurt-postgres.render.com/wingsv2_render_example_1p8l"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -31,14 +31,6 @@ class Task(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     email = db.Column(db.String(200), unique=True,nullable=False)
     password = db.Column(db.String, nullable=False)
-
-# I added this 2025/01/09
-class PreferenceData(db.Model):
-    __tablename__ = 'preference'
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
-    preference = db.Column(db.String(200))
-
 
 class Message(db.Model):
     __tablename__ = 'messages'
@@ -118,54 +110,6 @@ def postData():
     except Exception as e:
         print(e)
         return jsonify({'error': 'Internal Server Error'}), 500
-
-
-
-# I added this 2025/01/11
-@app.route('/preference', methods=['POST'])
-def postPreferenceData():
-    try:
-        # Extract data from the request
-        data = request.get_json()
-        new_email = data.get('email')
-        preference_text = data.get('preference')
-
-        # Validate input
-        if not new_email or not preference_text:
-            return jsonify({"error": "Missing required fields"}), 400
-
-        # Fetch the user by email
-        user = Task.query.filter_by(email=new_email).first()
-
-        if not user:
-            return jsonify({"error": "User not found"}), 404
-
-        user_auth_id = user.id
-
-        # Check if the user already has preferences
-        userPreferenceDetails = PreferenceData.query.filter_by(user_auth_id=user_auth_id).first()
-
-        if userPreferenceDetails:
-            # Update existing preference
-            userPreferenceDetails.preference = preference_text
-            message = "Updated user preference"
-        else:
-            # Create new preference
-            userPreferenceDetails = PreferenceData(
-                user_auth_id=user_auth_id,
-                preference=preference_text
-            )
-            db.session.add(userPreferenceDetails)
-            message = "Added new user preference"
-
-        # Commit changes to the database
-        db.session.commit()
-        return jsonify({'message': message}), 201
-
-    except Exception as e:
-        print(f"Error: {e}")
-        return jsonify({'error': 'Internal Server Error'}), 500
-
 
 
 # POSTING USER DATA TO DATABASE
