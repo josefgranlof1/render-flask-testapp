@@ -55,8 +55,6 @@ class UserData(db.Model):
     phone_number = db.Column(db.String(50))
     age = db.Column(db.String(10))
     bio = db.Column(db.Text)
-    language = db.Column(db.Text)
-
     
     user = db.relationship('Task', backref=db.backref('user_data', lazy=True))
 
@@ -130,8 +128,6 @@ def postUserData():
         phone_number = data['phone_number']
         age = data['age']
         bio = data['bio']
-        language = data['language']
-
 
         # Check if user details already exist
         userDetails = UserData.query.filter_by(user_auth_id=user_auth_id).first()
@@ -145,8 +141,6 @@ def postUserData():
             userDetails.phone_number = phone_number
             userDetails.age = age
             userDetails.bio = bio
-            userDetails.language = language
-
          
             message = "Updated user details"
         else:
@@ -160,8 +154,6 @@ def postUserData():
                 phone_number=phone_number,
                 age=age,
                 bio=bio,
-                language=language
-
             )
             db.session.add(userDetails)
             message = "Added user details"
