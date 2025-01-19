@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] ="postgresql://wingsv3_render_example_user:ky0kTNMItFnAzkrsPz3Cno3wtPOuyhQN@dpg-cu5si6l6l47c73bshr2g-a.frankfurt-postgres.render.com/wingsv3_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv3_render_example_user:ky0kTNMItFnAzkrsPz3Cno3wtPOuyhQN@dpg-cu5si6l6l47c73bshr2g-a.frankfurt-postgres.render.com/wingsv3_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -31,6 +31,7 @@ class Task(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     email = db.Column(db.String(200), unique=True,nullable=False)
     password = db.Column(db.String, nullable=False)
+
 
 class Message(db.Model):
     __tablename__ = 'messages'
@@ -110,6 +111,7 @@ def postData():
         return jsonify({'error': 'Internal Server Error'}), 500
 
 
+
 # POSTING USER DATA TO DATABASE
 @app.route('/userData', methods=['POST'])
 def postUserData():
@@ -128,6 +130,7 @@ def postUserData():
         phone_number = data['phone_number']
         age = data['age']
         bio = data['bio']
+      
 
         # Check if user details already exist
         userDetails = UserData.query.filter_by(user_auth_id=user_auth_id).first()
@@ -153,7 +156,7 @@ def postUserData():
                 hobbies=hobbies,
                 phone_number=phone_number,
                 age=age,
-                bio=bio,
+                bio=bio
             )
             db.session.add(userDetails)
             message = "Added user details"
@@ -271,7 +274,6 @@ def getUserData():
                 'phone_number': userDetails.phone_number,
                 'age': userDetails.age,
                 'bio': userDetails.bio,
-                'language': userDetails.language,
                 'image_url': image_url  # Include the image URL in the response
             }
             users.append(user)
@@ -280,6 +282,9 @@ def getUserData():
     
     except Exception as e:
         return jsonify({'error': 'Internal Server Error'}), 500
+
+
+
 
 # USER SIGNIN METHOD
 @app.route('/sign-in', methods=['POST'])
