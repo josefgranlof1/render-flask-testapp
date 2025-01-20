@@ -57,6 +57,7 @@ class UserData(db.Model):
     age = db.Column(db.String(10))
     bio = db.Column(db.Text)
     language = db.Column(db.String(255))
+    lookingforprerence = db.Column(db.String(255))
 
     user = db.relationship('Task', backref=db.backref('user_data', lazy=True))
 
@@ -132,6 +133,7 @@ def postUserData():
         age = data['age']
         bio = data['bio']
         language = data['language']
+        lookingforprerence = data['lookingforprerence']
 
         # Check if user details already exist
         userDetails = UserData.query.filter_by(user_auth_id=user_auth_id).first()
@@ -146,6 +148,7 @@ def postUserData():
             userDetails.age = age
             userDetails.bio = bio
             userDetails.language = language
+            userDetails.lookingforprerence = lookingforprerence
 
          
             message = "Updated user details"
@@ -160,7 +163,8 @@ def postUserData():
                 phone_number=phone_number,
                 age=age,
                 bio=bio,
-                language=language
+                language=language,
+                lookingforprerence=lookingforprerence
 
             )
             db.session.add(userDetails)
@@ -281,6 +285,7 @@ def getUserData():
                 'bio': userDetails.bio,
                 'image_url': image_url,  # Include the image URL in the response
                 'language': userDetails.language,
+                'lookingforprerence': userDetails.lookingforprerence,
 
             }
             users.append(user)
