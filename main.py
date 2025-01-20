@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv4_render_example_user:dFIyP51Itv9z8pJiSOx2PHlsI4eLaZvL@dpg-cu7a0ut6l47c73e7baj0-a.frankfurt-postgres.render.com/wingsv4_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv3_render_example_y4va_user:Ts2fHQs9QkQixvQiQWclNzymdCLAlD3t@dpg-cu74gt0gph6c73b8016g-a.frankfurt-postgres.render.com/wingsv3_render_example_y4va"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -57,7 +57,6 @@ class UserData(db.Model):
     age = db.Column(db.String(10))
     bio = db.Column(db.Text)
     language = db.Column(db.String(255))
-    lookingforprerence = db.Column(db.String(255))
 
     user = db.relationship('Task', backref=db.backref('user_data', lazy=True))
 
@@ -133,7 +132,6 @@ def postUserData():
         age = data['age']
         bio = data['bio']
         language = data['language']
-        lookingforprerence = data['lookingforprerence']
 
         # Check if user details already exist
         userDetails = UserData.query.filter_by(user_auth_id=user_auth_id).first()
@@ -148,7 +146,6 @@ def postUserData():
             userDetails.age = age
             userDetails.bio = bio
             userDetails.language = language
-            userDetails.lookingforprerence = lookingforprerence
 
          
             message = "Updated user details"
@@ -163,8 +160,7 @@ def postUserData():
                 phone_number=phone_number,
                 age=age,
                 bio=bio,
-                language=language,
-                lookingforprerence=lookingforprerence
+                language=language
 
             )
             db.session.add(userDetails)
@@ -285,7 +281,6 @@ def getUserData():
                 'bio': userDetails.bio,
                 'image_url': image_url,  # Include the image URL in the response
                 'language': userDetails.language,
-                'lookingforprerence': userDetails.lookingforprerence,
 
             }
             users.append(user)
