@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv3_render_example_y4va_user:Ts2fHQs9QkQixvQiQWclNzymdCLAlD3t@dpg-cu74gt0gph6c73b8016g-a.frankfurt-postgres.render.com/wingsv3_render_example_y4va"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv4_render_example_user:dFIyP51Itv9z8pJiSOx2PHlsI4eLaZvL@dpg-cu7a0ut6l47c73e7baj0-a.frankfurt-postgres.render.com/wingsv4_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
