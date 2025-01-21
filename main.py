@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv4_render_example_2a3q_user:KBnQZapxh4E7miSyF7CHWJaUtEBtqGXE@dpg-cu7rtgin91rc73d5so2g-a.frankfurt-postgres.render.com/wingsv4_render_example_2a3q"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv5_render_example_user:JKNcokF0uL6dkEkd1NKjhqkgiBTkRuPM@dpg-cu80nhl6l47c739tf5f0-a.frankfurt-postgres.render.com/wingsv5_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -49,7 +49,8 @@ class UserData(db.Model):
     __tablename__ = 'userdata'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
-    name = db.Column(db.String(255))
+    firstname = db.Column(db.String(255))
+    lastname = db.Column(db.String(255))
     email = db.Column(db.String(200))
     gender = db.Column(db.String(50))
     hobbies = db.Column(db.ARRAY(db.String))
@@ -64,6 +65,7 @@ class UserData(db.Model):
 class UserRelationData(db.Model):
     __tablename__ = 'userrelationdata'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    email = db.Column(db.String(200))
     user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     relations = db.Column(db.String(200))
 
@@ -137,7 +139,7 @@ def postUserRelationshipData():
         
 
         # Check if user details already exist
-        userDetails = UserData.query.filter_by(user_auth_id=user_auth_id).first()
+        userDetails = UserRelationData.query.filter_by(user_auth_id=user_auth_id).first()
 
         if userDetails:
             # Update existing user details
@@ -145,11 +147,11 @@ def postUserRelationshipData():
             userDetails.relations = relations
             
 
-         
+
             message = "Updated user details"
         else:
             # Add new user details
-            userDetails = UserData(
+            userDetails = UserRelationData(
                 user_auth_id=user_auth_id,
                 email=newEmail,
                 relations=relations,
@@ -176,7 +178,8 @@ def postUserData():
             return jsonify({'error': "No User registered with this mail"}), 400
 
         user_auth_id = user.id
-        name = data['name']
+        firstname = data['firstname']
+        lastname = data['lastname']
         gender = data['gender']
         hobbies = data['hobbies']
         phone_number = data['phone_number']
@@ -189,7 +192,8 @@ def postUserData():
 
         if userDetails:
             # Update existing user details
-            userDetails.name = name
+            userDetails.firstname = firstname
+            userDetails.lastname = lastname
             userDetails.email = newEmail
             userDetails.gender = gender
             userDetails.hobbies = hobbies
@@ -204,7 +208,8 @@ def postUserData():
             # Add new user details
             userDetails = UserData(
                 user_auth_id=user_auth_id,
-                name=name,
+                firstname=firstname,
+                lastname=lastname,
                 email=newEmail,
                 gender=gender,
                 hobbies=hobbies,
@@ -346,7 +351,8 @@ def getUserData():
 
             user = {
                 'id': userDetails.user_auth_id,
-                'name': userDetails.name,
+                'firstname': userDetails.firstname,
+                'lastname': userDetails.lastname,
                 'email': userDetails.email,
                 'gender': userDetails.gender,
                 'hobbies': userDetails.hobbies,
