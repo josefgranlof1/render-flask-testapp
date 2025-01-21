@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv5_render_example_user:JKNcokF0uL6dkEkd1NKjhqkgiBTkRuPM@dpg-cu80nhl6l47c739tf5f0-a.frankfurt-postgres.render.com/wingsv5_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv6_render_example_user:3Crp6xoG7Y0Ccie9ntkMWbafYxVttqSX@dpg-cu81cmd6l47c739tl49g-a.frankfurt-postgres.render.com/wingsv6_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -61,16 +61,6 @@ class UserData(db.Model):
 
     user = db.relationship('Task', backref=db.backref('user_data', lazy=True))
 
-# I added this 2025/01/21
-class UserRelationData(db.Model):
-    __tablename__ = 'userrelationdata'
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    email = db.Column(db.String(200))
-    user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
-    relations = db.Column(db.String(200))
-
-    user = db.relationship('Task', backref=db.backref('user_relationdata', lazy=True))   
-
 class UserImages(db.Model):
     __tablename__ = 'userImage'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -120,50 +110,6 @@ def postData():
 
     except Exception as e:
         print(e)
-        return jsonify({'error': 'Internal Server Error'}), 500
-
-# POSTING USER Relationship DATA TO DATABASE
-@app.route('/userrelationdata', methods=['POST'])
-def postUserRelationshipData():
-    try:  # Added closing parenthesis here
-        data = request.get_json()
-        newEmail = data['email']
-        user = Task.query.filter_by(email=newEmail).first()
-
-        if not user:
-            return jsonify({'error': "No User registered with this mail"}), 400
-
-        user_auth_id = user.id
-
-        relations = data['relations']
-        
-
-        # Check if user details already exist
-        userDetails = UserRelationData.query.filter_by(user_auth_id=user_auth_id).first()
-
-        if userDetails:
-            # Update existing user details
-            userDetails.email = newEmail
-            userDetails.relations = relations
-            
-
-
-            message = "Updated user details"
-        else:
-            # Add new user details
-            userDetails = UserRelationData(
-                user_auth_id=user_auth_id,
-                email=newEmail,
-                relations=relations,
-                
-            )
-            db.session.add(userDetails)
-            message = "Added user details"
-
-        db.session.commit()
-        return jsonify({'message': message}), 201
-
-    except Exception as e:
         return jsonify({'error': 'Internal Server Error'}), 500
 
 # POSTING USER DATA TO DATABASE
@@ -306,31 +252,6 @@ def get_image(user_auth_id):
         }), 200
     else:
         return jsonify({"error": "No image found for the given user_auth_id"}), 404
-
-# I added this 2025/01/21
-@app.route('/userrelationdata', methods=['GET'])
-def getUserRelationshipData():
-    try:
-        # Query all user details
-        userDetailsList = UserData.query.all()
-        
-        # Prepare the response data
-        users = []
-        for userDetails in userDetailsList:
-
-            user = {
-                'id': userDetails.user_auth_id,
-                'email': userDetails.email,
-                'relations': userDetails.relations,
-
-            }
-            users.append(user)
-        
-        return jsonify({'users': users}), 200
-    
-    except Exception as e:
-        return jsonify({'error': 'Internal Server Error'}), 500
-
     
 @app.route('/userData', methods=['GET'])
 def getUserData():
