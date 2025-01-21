@@ -304,7 +304,7 @@ def get_image(user_auth_id):
 
 # I added this 2025/01/21
 @app.route('/userrelationdata', methods=['GET'])
-def getUserData():
+def getUserRelationshipData():
     try:
         # Query all user details
         userDetailsList = UserData.query.all()
