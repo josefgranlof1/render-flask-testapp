@@ -122,7 +122,7 @@ def postData():
 
 # POSTING USER Relationship DATA TO DATABASE
 @app.route('/userrelationdata', methods=['POST'])
-def postUserData():
+def postUserRelationshipData():
     try:  # Added closing parenthesis here
         data = request.get_json()
         newEmail = data['email']
