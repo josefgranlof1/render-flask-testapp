@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv7_render_example_user:0VlEoteFLIrYUasPXdl1tfAPhjy1BW8z@dpg-cu8dgpt6l47c738gq2jg-a.frankfurt-postgres.render.com/wingsv7_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv7_render_example_6p4p_user:ujB1ql8yvwzfmZ5SR2BjFtT540CtO4cI@dpg-cu8dn3aj1k6c739tp2mg-a.frankfurt-postgres.render.com/wingsv7_render_example_6p4p"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -65,7 +65,6 @@ class RelationshipData(db.Model):
     __tablename__ = 'relationshipData'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
-    email = db.Column(db.String(200))
     relationships = db.Column(db.String(255))
 
     user = db.relationship('Task', backref=db.backref('relationship_Data', lazy=True))    
@@ -203,15 +202,12 @@ def postRelationshipsData():
 
         if userRelationships:
             # Update existing user details
-            userRelationships.relationships = relationships
-            userRelationships.email = newEmail
-            
+            userRelationships.relationships = relationships            
             message = "Updated user details"
         else:
             # Add new user details
             userRelationships = RelationshipData(
                 user_auth_id=user_auth_id,
-                email=newEmail,
                 relationships=relationships,
 
 
