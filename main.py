@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv7_render_example_6p4p_user:ujB1ql8yvwzfmZ5SR2BjFtT540CtO4cI@dpg-cu8dn3aj1k6c739tp2mg-a.frankfurt-postgres.render.com/wingsv7_render_example_6p4p"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv8_render_example_user:wViG1lUaDrwhAnKzcI9qBuL9Mr7MdDAv@dpg-cu92e8qj1k6c73f3p2k0-a.frankfurt-postgres.render.com/wingsv8_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -61,13 +61,13 @@ class UserData(db.Model):
 
     user = db.relationship('Task', backref=db.backref('user_data', lazy=True))
 
-class RelationshipData(db.Model):
-    __tablename__ = 'relationshipData'
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
-    relationships = db.Column(db.String(255))
+# class RelationshipData(db.Model):
+#     __tablename__ = 'relationshipData'
+#     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+#     user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
+#     relationships = db.Column(db.String(255))
 
-    user = db.relationship('Task', backref=db.backref('relationship_Data', lazy=True))    
+#     user = db.relationship('Task', backref=db.backref('relationship_Data', lazy=True))    
 
 class UserImages(db.Model):
     __tablename__ = 'userImage'
@@ -182,44 +182,44 @@ def postUserData():
     except Exception as e:
         return jsonify({'error': 'Internal Server Error'}), 500
 
-# POSTING Relationships DATA TO DATABASE
-@app.route('/relationshipData', methods=['POST'])
-def postRelationshipsData():
-    try:  # Added closing parenthesis here
-        data = request.get_json()
-        newEmail = data['email']
-        user = Task.query.filter_by(email=newEmail).first()
+# # POSTING Relationships DATA TO DATABASE
+# @app.route('/relationshipData', methods=['POST'])
+# def postRelationshipsData():
+#     try:  # Added closing parenthesis here
+#         data = request.get_json()
+#         newEmail = data['email']
+#         user = Task.query.filter_by(email=newEmail).first()
 
-        if not user:
-            return jsonify({'error': "No User registered with this mail"}), 400
+#         if not user:
+#             return jsonify({'error': "No User registered with this mail"}), 400
 
-        user_auth_id = user.id
-        relationships = data['relationships']
+#         user_auth_id = user.id
+#         relationships = data['relationships']
         
 
-        # Check if user details already exist
-        userRelationships = RelationshipData.query.filter_by(user_auth_id=user_auth_id).first()
+#         # Check if user details already exist
+#         userRelationships = RelationshipData.query.filter_by(user_auth_id=user_auth_id).first()
 
-        if userRelationships:
-            # Update existing user details
-            userRelationships.relationships = relationships            
-            message = "Updated user details"
-        else:
-            # Add new user details
-            userRelationships = RelationshipData(
-                user_auth_id=user_auth_id,
-                relationships=relationships,
+#         if userRelationships:
+#             # Update existing user details
+#             userRelationships.relationships = relationships            
+#             message = "Updated user details"
+#         else:
+#             # Add new user details
+#             userRelationships = RelationshipData(
+#                 user_auth_id=user_auth_id,
+#                 relationships=relationships,
 
 
-            )
-            db.session.add(userRelationships)
-            message = "Added user details"
+#             )
+#             db.session.add(userRelationships)
+#             message = "Added user details"
 
-        db.session.commit()
-        return jsonify({'message': message}), 201
+#         db.session.commit()
+#         return jsonify({'message': message}), 201
 
-    except Exception as e:
-        return jsonify({'error': 'Internal Server Error'}), 500        
+#     except Exception as e:
+#         return jsonify({'error': 'Internal Server Error'}), 500        
 
 @app.route('/upload_image', methods=['POST'])
 def upload_image():
