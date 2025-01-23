@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv8_render_example_user:wViG1lUaDrwhAnKzcI9qBuL9Mr7MdDAv@dpg-cu92e8qj1k6c73f3p2k0-a.frankfurt-postgres.render.com/wingsv8_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv8_render_example_po6z_user:4Jd1Nbrio0y3EZYz8SqMPdkvI6nQh3ha@dpg-cu94kcd2ng1s73evrirg-a.frankfurt-postgres.render.com/wingsv8_render_example_po6z"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -57,7 +57,8 @@ class UserData(db.Model):
     phone_number = db.Column(db.String(50))
     age = db.Column(db.String(10))
     bio = db.Column(db.Text)
-    language = db.Column(db.String(255))
+    lookingfor = db.Column(db.String(255))
+    openfor = db.Column(db.String(255))
 
     user = db.relationship('Task', backref=db.backref('user_data', lazy=True))
 
@@ -139,7 +140,8 @@ def postUserData():
         phone_number = data['phone_number']
         age = data['age']
         bio = data['bio']
-        language = data['language']
+        lookingfor = data['lookingfor']
+        openfor = data['openfor']
 
         # Check if user details already exist
         userDetails = UserData.query.filter_by(user_auth_id=user_auth_id).first()
@@ -154,7 +156,8 @@ def postUserData():
             userDetails.phone_number = phone_number
             userDetails.age = age
             userDetails.bio = bio
-            userDetails.language = language
+            userDetails.lookingfor = lookingfor
+            userDetails.openfor = openfor
 
          
             message = "Updated user details"
@@ -170,7 +173,8 @@ def postUserData():
                 phone_number=phone_number,
                 age=age,
                 bio=bio,
-                language=language
+                lookingfor=lookingfor,
+                openfor=openfor
 
             )
             db.session.add(userDetails)
@@ -328,7 +332,8 @@ def getUserData():
                 'age': userDetails.age,
                 'bio': userDetails.bio,
                 'image_url': image_url,  # Include the image URL in the response
-                'language': userDetails.language,
+                'lookingfor': userDetails.lookingfor,
+                'openfor': userDetails.openfor,
 
             }
             users.append(user)
