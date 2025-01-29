@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv11_render_example_user:cldTz1qqp67iDv6vbh4C7on5hJUWOu9H@dpg-cud07nan91rc73emb3a0-a.frankfurt-postgres.render.com/wingsv11_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv11_render_example_4926_user:RbQ43Eh79OS2AlwUTOQZJvzU1591KmoC@dpg-cud0o72n91rc73emjmeg-a.frankfurt-postgres.render.com/wingsv11_render_example_4926"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -66,6 +66,7 @@ class RelationshipData(db.Model):
     __tablename__ = 'relationshipData'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
+    email = db.Column(db.String(200))
     relationships = db.Column(db.String(255))
 
     user = db.relationship('Task', backref=db.backref('relationship_Data', lazy=True))    
@@ -227,7 +228,7 @@ def postRelationshipsData():
 
 # POSTING Relationships DATA TO DATABASE 2025
 @app.route('/relationshipData', methods=['POST'])
-def postPreferenceData():
+def postRelationshipsData():
     try:
         # Extract data from the request
         data = request.get_json()
@@ -245,6 +246,7 @@ def postPreferenceData():
             return jsonify({"error": "User not found"}), 404
 
         user_auth_id = user.id
+        relationships = data['relationships']
 
         # Check if the user already has preferences
         userrelationshipsDetails = RelationshipData.query.filter_by(user_auth_id=user_auth_id).first()
@@ -252,11 +254,14 @@ def postPreferenceData():
         if userrelationshipsDetails:
             # Update existing preference
             userrelationshipsDetails.relationships = relationships
+            userrelationshipsDetails.email = new_email
+
             message = "Updated user relationshipData"
         else:
             # Create new preference
             userrelationshipsDetails = RelationshipData(
                 user_auth_id=user_auth_id,
+                email=new_email,
                 relationships=relationships
             )
             db.session.add(userrelationshipsDetails)
