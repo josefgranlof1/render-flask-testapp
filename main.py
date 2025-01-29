@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv11_render_example_4926_user:RbQ43Eh79OS2AlwUTOQZJvzU1591KmoC@dpg-cud0o72n91rc73emjmeg-a.frankfurt-postgres.render.com/wingsv11_render_example_4926"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv12_render_example_user:8e05e3I0T853e3xM7WjsgZaiUF43eJIg@dpg-cud12ul6l47c73850v8g-a.frankfurt-postgres.render.com/wingsv12_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -232,8 +232,8 @@ def postRelationshipsData():
     try:
         # Extract data from the request
         data = request.get_json()
-        new_email = data.get('email')
-        relationships = data.get('relationshipData')
+        new_email = data['email']
+        relationships = data['relationships']
 
         # Validate input
         if not new_email or not relationships:
