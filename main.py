@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv10_render_example_user:IKnkPa5MMLnRFLHruNeqJ5jN0hOAIhzC@dpg-cucij1l6l47c73929530-a.frankfurt-postgres.render.com/wingsv10_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv11_render_example_user:cldTz1qqp67iDv6vbh4C7on5hJUWOu9H@dpg-cud07nan91rc73emb3a0-a.frankfurt-postgres.render.com/wingsv11_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -186,7 +186,7 @@ def postUserData():
     except Exception as e:
         return jsonify({'error': 'Internal Server Error'}), 500
 
-# POSTING Relationships DATA TO DATABASE
+""" # POSTING Relationships DATA TO DATABASE
 @app.route('/relationshipData', methods=['POST'])
 def postRelationshipsData():
     try:  # Added closing parenthesis here
@@ -223,7 +223,53 @@ def postRelationshipsData():
         return jsonify({'message': message}), 201
 
     except Exception as e:
-        return jsonify({'error': 'Internal Server Error'}), 500        
+        return jsonify({'error': 'Internal Server Error'}), 500     """    
+
+# POSTING Relationships DATA TO DATABASE 2025
+@app.route('/relationshipData', methods=['POST'])
+def postPreferenceData():
+    try:
+        # Extract data from the request
+        data = request.get_json()
+        new_email = data.get('email')
+        relationships = data.get('relationshipData')
+
+        # Validate input
+        if not new_email or not relationships:
+            return jsonify({"error": "Missing required fields"}), 400
+
+        # Fetch the user by email
+        user = Task.query.filter_by(email=new_email).first()
+
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        user_auth_id = user.id
+
+        # Check if the user already has preferences
+        userrelationshipsDetails = RelationshipData.query.filter_by(user_auth_id=user_auth_id).first()
+
+        if userrelationshipsDetails:
+            # Update existing preference
+            userrelationshipsDetails.relationships = relationships
+            message = "Updated user relationshipData"
+        else:
+            # Create new preference
+            userrelationshipsDetails = RelationshipData(
+                user_auth_id=user_auth_id,
+                relationships=relationships
+            )
+            db.session.add(userrelationshipsDetails)
+            message = "Added new user relationshipData"
+
+        # Commit changes to the database
+        db.session.commit()
+        return jsonify({'message': message}), 201
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'error': 'Internal Server Error'}), 500      
+
 
 @app.route('/upload_image', methods=['POST'])
 def upload_image():
