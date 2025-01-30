@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv15_render_example_user:gpRxWTsp1PLXaZoFyjz2wcNtnGGyxaiD@dpg-cudnvct6l47c73agndo0-a.frankfurt-postgres.render.com/wingsv15_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv15_render_example_0t6c_user:AhkW1kiJhPi7UYHfc66LNMcMzhSkunNa@dpg-cudq78ogph6c73fg4es0-a.frankfurt-postgres.render.com/wingsv15_render_example_0t6c"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -400,13 +400,11 @@ def getRelationshipData():
         # Prepare the response data
         users = []
         for userDetails in userDetailsList:
-        
             user = {
                 'id': userDetails.user_auth_id,
-                'email': userDetails.email,
                 'lookingfor': userDetails.lookingfor,
+                'lastname': userDetails.lastname,
                 'openfor': userDetails.openfor,
-
             }
             users.append(user)
         
@@ -414,7 +412,6 @@ def getRelationshipData():
     
     except Exception as e:
         return jsonify({'error': 'Internal Server Error'}), 500
-
 
 
 
