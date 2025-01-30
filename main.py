@@ -381,8 +381,6 @@ def getUserData():
                 'age': userDetails.age,
                 'bio': userDetails.bio,
                 'image_url': image_url,  # Include the image URL in the response
-                'lookingfor': userDetails.lookingfor,
-                'openfor': userDetails.openfor,
 
             }
             users.append(user)
