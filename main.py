@@ -402,8 +402,8 @@ def getRelationshipData():
         for userDetails in userDetailsList:
             user = {
                 'id': userDetails.user_auth_id,
+                'email': userDetails.email,
                 'lookingfor': userDetails.lookingfor,
-                'lastname': userDetails.lastname,
                 'openfor': userDetails.openfor,
             }
             users.append(user)
