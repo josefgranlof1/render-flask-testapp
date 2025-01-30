@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv13_render_example_user:W3CHjdX0nvVyC56C3iM46euphaDpBCKo@dpg-cud1jd1opnds73anuccg-a.frankfurt-postgres.render.com/wingsv13_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv14_render_example_user:x9xpNwouc44BRw7c7DvCWJtp9efBtmDa@dpg-cudn8rpopnds73crcrgg-a.frankfurt-postgres.render.com/wingsv14_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -57,8 +57,6 @@ class UserData(db.Model):
     phone_number = db.Column(db.String(50))
     age = db.Column(db.String(10))
     bio = db.Column(db.Text)
-    lookingfor = db.Column(db.String(255))
-    openfor = db.Column(db.String(255))
 
     user = db.relationship('Task', backref=db.backref('user_data', lazy=True))
 
@@ -67,7 +65,8 @@ class RelationshipData(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     email = db.Column(db.String(200))
-    relationships = db.Column(db.String(255))
+    lookingfor = db.Column(db.String(255))
+    openfor = db.Column(db.String(255))
 
     user = db.relationship('Task', backref=db.backref('relationship_Data', lazy=True))    
 
@@ -141,8 +140,7 @@ def postUserData():
         phone_number = data['phone_number']
         age = data['age']
         bio = data['bio']
-        lookingfor = data['lookingfor']
-        openfor = data['openfor']
+    
 
         # Check if user details already exist
         userDetails = UserData.query.filter_by(user_auth_id=user_auth_id).first()
@@ -157,8 +155,6 @@ def postUserData():
             userDetails.phone_number = phone_number
             userDetails.age = age
             userDetails.bio = bio
-            userDetails.lookingfor = lookingfor
-            userDetails.openfor = openfor
 
          
             message = "Updated user details"
@@ -174,8 +170,6 @@ def postUserData():
                 phone_number=phone_number,
                 age=age,
                 bio=bio,
-                lookingfor=lookingfor,
-                openfor=openfor
 
             )
             db.session.add(userDetails)
@@ -233,10 +227,11 @@ def postRelationshipsData():
         # Extract data from the request
         data = request.get_json()
         new_email = data['email']
-        relationships = data['relationships']
+        lookingfor = data['lookingfor']
+        openfor = data['openfor']
 
         # Validate input
-        if not new_email or not relationships:
+        if not new_email or not lookingfor or not openfor:
             return jsonify({"error": "Missing required fields"}), 400
 
         # Fetch the user by email
@@ -246,14 +241,16 @@ def postRelationshipsData():
             return jsonify({"error": "User not found"}), 404
 
         user_auth_id = user.id
-        relationships = data['relationships']
+        lookingfor = data['lookingfor']
+        openfor = data['openfor']
 
         # Check if the user already has preferences
         userrelationshipsDetails = RelationshipData.query.filter_by(user_auth_id=user_auth_id).first()
 
         if userrelationshipsDetails:
             # Update existing preference
-            userrelationshipsDetails.relationships = relationships
+            userrelationshipsDetails.lookingfor = lookingfor
+            userrelationshipsDetails.openfor = openfor
             userrelationshipsDetails.email = new_email
 
             message = "Updated user relationshipData"
@@ -262,7 +259,8 @@ def postRelationshipsData():
             userrelationshipsDetails = RelationshipData(
                 user_auth_id=user_auth_id,
                 email=new_email,
-                relationships=relationships
+                lookingfor=lookingfor,
+                openfor=openfor
             )
             db.session.add(userrelationshipsDetails)
             message = "Added new user relationshipData"
