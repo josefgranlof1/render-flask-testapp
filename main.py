@@ -390,6 +390,31 @@ def getUserData():
     except Exception as e:
         return jsonify({'error': 'Internal Server Error'}), 500
 
+# Getting Relationships DATA FROM DATABASE 2025
+@app.route('/relationshipData', methods=['GET'])
+def getRelationshipData():
+    try:
+        # Query all user details
+        userDetailsList = RelationshipData.query.all()
+        
+        # Prepare the response data
+        users = []
+        for userDetails in userDetailsList:
+        
+            user = {
+                'id': userDetails.user_auth_id,
+                'email': userDetails.email,
+                'lookingfor': userDetails.lookingfor,
+                'openfor': userDetails.openfor,
+
+            }
+            users.append(user)
+        
+        return jsonify({'users': users}), 200
+    
+    except Exception as e:
+        return jsonify({'error': 'Internal Server Error'}), 500
+
 
 
 
