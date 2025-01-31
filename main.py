@@ -400,6 +400,9 @@ def getRelationshipData():
         # Prepare the response data
         users = []
         for userDetails in userDetailsList:
+
+            userDetails = RelationshipData.query.filter_by(user_auth_id=userDetails.user_auth_id).first()
+
             user = {
                 'id': userDetails.user_auth_id,
                 'email': userDetails.email,
