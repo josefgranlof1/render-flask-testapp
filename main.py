@@ -417,13 +417,9 @@ def getUserData():
 #         return jsonify({'error': 'Internal Server Error'}), 500
 
 # Getting Relationships DATA FROM DATABASE 2025
-# Getting Relationships DATA FROM DATABASE 2025
 @app.route('/relationshipData', methods=['GET'])
-def getRelationshipData():
+def get_relationship_data():
     relationships = RelationshipData.query.all()
-
-    datas = []
-
     data = [
         {
             'id': rel.id,
@@ -434,9 +430,6 @@ def getRelationshipData():
         }
         for rel in relationships
     ]
-
-    datas.append(data)
-    
     return jsonify(data)
 
 
