@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv20_render_example_user:a6PAzWjo9ybdp5ccFAMlQ9ojIVPRYeQf@dpg-cueih9rtq21c73ehd5jg-a.frankfurt-postgres.render.com/wingsv20_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv1_render_example_user:TPjTdD619LSkc72IpN1cXRl8szgxaGmv@dpg-cuf3363tq21c73eul2mg-a.frankfurt-postgres.render.com/wingsv1_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -390,32 +390,47 @@ def getUserData():
     except Exception as e:
         return jsonify({'error': 'Internal Server Error'}), 500
 
+# # Getting Relationships DATA FROM DATABASE 2025
+# @app.route('/relationshipData', methods=['GET'])
+# def getRelationshipData():
+#     try:
+#         # Query all user details
+#         userDetailsList = RelationshipData.query.all()
+        
+#         # Prepare the response data
+#         users = []
+#         for userDetails in userDetailsList:
+
+#             userDetails = RelationshipData.query.filter_by(user_auth_id=userDetails.user_auth_id).first()
+
+#             user = {
+#                 'id': userDetails.user_auth_id,
+#                 'email': userDetails.email,
+#                 'lookingfor': userDetails.lookingfor,
+#                 'openfor': userDetails.openfor,
+#             }
+#             users.append(user)
+        
+#         return jsonify({'users': users}), 200
+    
+#     except Exception as e:
+#         return jsonify({'error': 'Internal Server Error'}), 500
+
 # Getting Relationships DATA FROM DATABASE 2025
 @app.route('/relationshipData', methods=['GET'])
-def getRelationshipData():
-    try:
-        # Query all user details
-        userDetailsList = RelationshipData.query.all()
-        
-        # Prepare the response data
-        users = []
-        for userDetails in userDetailsList:
-
-            userDetails = RelationshipData.query.filter_by(user_auth_id=userDetails.user_auth_id).first()
-
-            user = {
-                'id': userDetails.user_auth_id,
-                'email': userDetails.email,
-                'lookingfor': userDetails.lookingfor,
-                'openfor': userDetails.openfor,
-            }
-            users.append(user)
-        
-        return jsonify({'users': users}), 200
-    
-    except Exception as e:
-        return jsonify({'error': 'Internal Server Error'}), 500
-
+def get_relationship_data():
+    relationships = RelationshipData.query.all()
+    data = [
+        {
+            'id': rel.id,
+            'user_auth_id': rel.user_auth_id,
+            'email': rel.email,
+            'lookingfor': rel.lookingfor,
+            'openfor': rel.openfor
+        }
+        for rel in relationships
+    ]
+    return jsonify(data)
 
 
 # USER SIGNIN METHOD
