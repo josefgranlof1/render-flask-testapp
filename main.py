@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv4_render_example_x4ie_user:j13xMAJ7bhoECu0gA3JkEwrhsz08aCj5@dpg-cufj073tq21c73f6gol0-a.frankfurt-postgres.render.com/wingsv4_render_example_x4ie"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv5_render_example_dp4x_user:7QvaMFToizmynu55Zb0OnvL8t4LtOOYc@dpg-cufjn45umphs73b3963g-a.frankfurt-postgres.render.com/wingsv5_render_example_dp4x"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -68,7 +68,7 @@ class RelationshipData(db.Model):
     lookingfor = db.Column(db.String(255))
     openfor = db.Column(db.String(255))
 
-    user = db.relationship('Task', backref=db.backref('relationship_Data', lazy=True))    
+    user = db.relationship('Task', backref=db.backref('get_relationship_data', lazy=True))    
 
 class UserImages(db.Model):
     __tablename__ = 'userImage'
