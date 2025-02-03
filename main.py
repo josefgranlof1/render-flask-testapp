@@ -68,7 +68,7 @@ class RelationshipData(db.Model):
     lookingfor = db.Column(db.String(255))
     openfor = db.Column(db.String(255))
 
-    user = db.relationship('Task', backref=db.backref('get_relationship_data', lazy=True))    
+    user = db.relationship('UserDetails', backref=db.backref('relationship_data', lazy=True))    
 
 class UserImages(db.Model):
     __tablename__ = 'userImage'
