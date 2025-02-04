@@ -418,7 +418,7 @@ def getUserData():
 
 # Getting Relationships DATA FROM DATABASE 2025
 @app.route('/relationshipData', methods=['GET'])
-def get_relationship_data():
+def getRelationshipData():
     relationships = RelationshipData.query.all()
     data = [
         {
