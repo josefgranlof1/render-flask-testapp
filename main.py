@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://locationtest1_render_example_fhl5_user:lDml5B8vtP3VSjJs5AUkpZHKoOcTX6SO@dpg-cuifsnrv2p9s73amuogg-a.frankfurt-postgres.render.com/locationtest1_render_example_fhl5"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://locationtest2_render_example_12s2_user:OTp6Md4R7FMBSwTTHrzmFv1rS6FnU9wQ@dpg-cuig7qi3esus739h3bfg-a.frankfurt-postgres.render.com/locationtest2_render_example_12s2"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -70,12 +70,13 @@ class RelationshipData(db.Model):
 
     user = db.relationship('Task', backref=db.backref('get_relationship_data', lazy=True))    
 
-class LocationsData(db.Model):
-    __tablename__ = 'locationsData'
+class LocationData(db.Model):
+    __tablename__ = 'locationData'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    location_name = db.Column(db.String(255))
+    user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
+    locationname = db.Column(db.String(200))
 
-    user = db.relationship('Task', backref=db.backref('location_data', lazy=True))    
+    user = db.relationship('Task', backref=db.backref('getLocationData', lazy=True))    
 
 class UserImages(db.Model):
     __tablename__ = 'userImage'
@@ -439,17 +440,20 @@ def get_relationship_data():
     ]
     return jsonify(data)
 
-@app.route('/locationsData', methods=['GET'])
+@app.route('/locationData', methods=['GET'])
 def getLocationData():
-    locations = LocationsData.query.all()
+    locations = LocationData.query.all()
     data = [
         {
             'id': loc.id,
-            'location_name': loc.location_name,
+            'user_auth_id': loc.user_auth_id,
+            'locationname': loc.locationname,
+
         }
         for loc in locations
     ]
     return jsonify(data)
+
 
 # USER SIGNIN METHOD
 @app.route('/sign-in', methods=['POST'])
