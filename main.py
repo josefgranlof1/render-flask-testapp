@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://locationtest1_render_example_user:XLfPTEyzWfF76HSXdx9oTOL0znRWc3ge@dpg-cuifec2n91rc73bhph00-a.frankfurt-postgres.render.com/locationtest1_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv6_render_example_artj_user:52LjIFQ6YYkRBiANkvMlccFXYdYejN2O@dpg-cufngdl6l47c73fl61hg-a.frankfurt-postgres.render.com/wingsv6_render_example_artj"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -63,7 +63,7 @@ class UserData(db.Model):
 class RelationshipData(db.Model):
     __tablename__ = 'relationshipData'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-
+    user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     email = db.Column(db.String(200))
     lookingfor = db.Column(db.String(255))
     openfor = db.Column(db.String(255))
@@ -88,185 +88,6 @@ class UserImages(db.Model):
 
 with app.app_context():
     db.create_all()
-
-
-def calculate_match_score(user1_data, user2_data, user1_rel, user2_rel):
-    score = 0
-    
-    # Age compatibility (max 30 points)
-    try:
-        age_diff = abs(float(user1_data.age) - float(user2_data.age))
-        if age_diff <= 5:
-            score += 30
-        elif age_diff <= 10:
-            score += 20
-        elif age_diff <= 15:
-            score += 10
-    except (ValueError, TypeError):
-        pass 
-    
-    # Relationship preference match (max 40 points)
-    if user1_rel.lookingfor == user2_rel.lookingfor:
-        score += 20
-    if user1_rel.openfor == user2_rel.openfor:
-        score += 20
-    
-    # Common hobbies (max 30 points)
-    if user1_data.hobbies and user2_data.hobbies:
-        common_hobbies = set(user1_data.hobbies).intersection(set(user2_data.hobbies))
-        score += min(len(common_hobbies) * 10, 30)  # Cap at 30 points
-    
-    return score
-
-def get_user_matches(user_id, limit=5):
-    try:
-        # Get user data and preferences
-        user_data = UserData.query.filter_by(user_auth_id=user_id).first()
-        if not user_data:
-            return None, "User not found"
-            
-        user_rel = RelationshipData.query.filter_by(user_auth_id=user_id).first()
-        if not user_rel:
-            return None, "User relationship preferences not found"
-        
-        # Get opposite gender users
-        target_gender = 'Female' if user_data.gender.lower() == 'Male' else 'Male'
-        potential_matches = (
-            db.session.query(UserData, RelationshipData)
-            .join(RelationshipData, UserData.user_auth_id == RelationshipData.user_auth_id)
-            .filter(UserData.gender.ilike(target_gender))
-            .filter(UserData.user_auth_id != user_id)
-            .all()
-        )
-        
-        # Calculate scores and prepare matches
-        matches = []
-        for match_data, match_rel in potential_matches:
-            score = calculate_match_score(user_data, match_data, user_rel, match_rel)
-
-            image_url = None
-            user_image = UserImages.query.filter_by(user_auth_id=match_data.user_auth_id).first()
-            if user_image and user_image.imageString:
-                image_url = f"{request.host_url}uploads/{user_image.imageString}"
-            
-            matches.append({
-                'user_id': match_data.user_auth_id,
-                'score': score,
-                'details': {
-                    'firstname': match_data.firstname,
-                    'lastname': match_data.lastname,
-                    'age': match_data.age,
-                    'bio': match_data.bio,
-                    'hobbies': match_data.hobbies,
-                    'image_url': image_url,
-                    'relationship_preferences': {
-                        'lookingfor': match_rel.lookingfor,
-                        'openfor': match_rel.openfor
-                    }
-                }
-            })
-        
-        # Sort by score and get top matches
-        matches.sort(key=lambda x: x['score'], reverse=True)
-        return matches[:limit], None
-        
-    except Exception as e:
-        return None, str(e)
-
-# Given a user id returns the best 5 matches sorted
-@app.route('/match/<int:user_id>', methods=['GET'])
-def get_matches_endpoint(user_id):
-    matches, error = get_user_matches(user_id, limit=5)
-    
-    if error:
-        return jsonify({'error': error}), 404 if error in ["User not found", "User relationship preferences not found"] else 500
-        
-    return jsonify({
-        'user_id': user_id,
-        'matches': matches
-    }), 200
-
-# Get all users best matches
-@app.route('/matches', methods=['GET'])
-def get_all_matches():
-    try:
-        users = (
-            db.session.query(UserData, RelationshipData)
-            .join(RelationshipData, UserData.user_auth_id == RelationshipData.user_auth_id)
-            .all()
-        )
-        
-        all_matches = {}
-        for user_data, user_rel in users:
-            matches, error = get_user_matches(user_data.user_auth_id, limit=1)
-            
-            if matches and not error:
-                all_matches[user_data.user_auth_id] = {
-                    'user': {
-                        'id': user_data.user_auth_id,
-                        'firstname': user_data.firstname,
-                        'lastname': user_data.lastname,
-                        'gender': user_data.gender
-                    },
-                    'best_match': matches[0] if matches else None
-                }
-        
-        return jsonify({'matches': all_matches}), 200
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-# get all users (all attributes union)
-@app.route('/user_profile', methods=['GET'])
-def get_user_profile():
-    try:
-        # Get email from query parameters
-        email = request.args.get('email')
-        
-        if not email:
-            return jsonify({'error': 'Email is required'}), 400
-
-        # Find the user authentication details
-        user = Task.query.filter_by(email=email).first()
-        
-        if not user:
-            return jsonify({'error': 'User not found'}), 404
-
-        # Retrieve user data
-        user_data = UserData.query.filter_by(user_auth_id=user.id).first()
-        
-        # Retrieve relationship data
-        relationship_data = RelationshipData.query.filter_by(user_auth_id=user.id).first()
-        
-        # Retrieve user image
-        user_image = UserImages.query.filter_by(user_auth_id=user.id).first()
-        
-        # Prepare image URL
-        image_url = None
-        if user_image and user_image.imageString:
-            image_url = request.host_url + 'uploads/' + user_image.imageString
-        
-        # Construct the complete profile
-        profile = {
-            'id': user.id,
-            'firstname': user_data.firstname if user_data else None,
-            'lastname': user_data.lastname if user_data else None,
-            'email': user.email,
-            'gender': user_data.gender if user_data else None,
-            'hobbies': user_data.hobbies if user_data else None,
-            'image_url': image_url,
-            'phone_number': user_data.phone_number if user_data else None,
-            'age': user_data.age if user_data else None,
-            'bio': user_data.bio if user_data else None,
-            'lookingfor': relationship_data.lookingfor if relationship_data else None,
-            'openfor': relationship_data.openfor if relationship_data else None
-        }
-        
-        return jsonify(profile), 200
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 # METHOD TO GET AUTHENTICATED USERS LIST
 @app.get("/users")
@@ -627,16 +448,10 @@ def get_locations():
             'id': loc.id,
             'location_number': loc.location_number,
             'location_name': loc.location_name,
-            'lat': loc.lat,
-            'lng': loc.lng,
-            'max_users': loc.max_users,
-            'space_left': loc.space_left,
-            'has_user_arrived': loc.has_user_arrived
         }
         for loc in locations
     ]
     return jsonify(data)
-
 
 # USER SIGNIN METHOD
 @app.route('/sign-in', methods=['POST'])
