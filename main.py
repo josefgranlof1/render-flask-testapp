@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://locationtest4_render_example_user:DCks9ypOyeZOkSEw4H387zXT2CpYtAk8@dpg-cuifac5umphs7380f0tg-a.frankfurt-postgres.render.com/locationtest4_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://locationtest1_render_example_user:XLfPTEyzWfF76HSXdx9oTOL0znRWc3ge@dpg-cuifec2n91rc73bhph00-a.frankfurt-postgres.render.com/locationtest1_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -75,11 +75,6 @@ class LocationsData(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     location_number = db.Column(db.Integer)
     location_name = db.Column(db.String(255))
-    lat = db.Column(db.Float)
-    lng = db.Column(db.Float)
-    max_users = db.Column(db.Integer)
-    space_left = db.Column(db.Boolean)
-    has_user_arrived = db.Column(db.Boolean)
 
     user = db.relationship('Task', backref=db.backref('location_data', lazy=True))    
 
