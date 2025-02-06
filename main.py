@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://locationtestreset_render_example_user:X4DXAu66LQ7kzUgIyeml9OPJM0xal5SH@dpg-cuifmgjqf0us73dot2pg-a.frankfurt-postgres.render.com/locationtestreset_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://locationtest1_render_example_fhl5_user:lDml5B8vtP3VSjJs5AUkpZHKoOcTX6SO@dpg-cuifsnrv2p9s73amuogg-a.frankfurt-postgres.render.com/locationtest1_render_example_fhl5"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -73,7 +73,6 @@ class RelationshipData(db.Model):
 class LocationsData(db.Model):
     __tablename__ = 'locationsData'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    location_number = db.Column(db.Integer)
     location_name = db.Column(db.String(255))
 
     user = db.relationship('Task', backref=db.backref('location_data', lazy=True))    
@@ -441,12 +440,11 @@ def get_relationship_data():
     return jsonify(data)
 
 @app.route('/locationsData', methods=['GET'])
-def get_locations():
+def getLocationData():
     locations = LocationsData.query.all()
     data = [
         {
             'id': loc.id,
-            'location_number': loc.location_number,
             'location_name': loc.location_name,
         }
         for loc in locations
