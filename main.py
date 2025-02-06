@@ -73,13 +73,13 @@ class RelationshipData(db.Model):
 class LocationsData(db.Model):
     __tablename__ = 'locationsData'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    location_number = db.Column(db.Integer, nullable=True)
-    location_name = db.Column(db.String(255), nullable=True)
-    lat = db.Column(db.Float, nullable=True)
-    lng = db.Column(db.Float, nullable=True)
-    max_users = db.Column(db.Integer, nullable=True)
-    space_left = db.Column(db.Boolean, nullable=True)
-    has_user_arrived = db.Column(db.Boolean, nullable=True)
+    location_number = db.Column(db.Integer)
+    location_name = db.Column(db.String(255))
+    lat = db.Column(db.Float)
+    lng = db.Column(db.Float)
+    max_users = db.Column(db.Integer)
+    space_left = db.Column(db.Boolean)
+    has_user_arrived = db.Column(db.Boolean)
 
     user = db.relationship('Task', backref=db.backref('location_data', lazy=True))    
 
