@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsv1_render_example_axz2_user:NUUYDzyVh4fWb3CDkbcQomXZo6cUFMmY@dpg-cuhtenaj1k6c73fds8u0-a.frankfurt-postgres.render.com/wingsv1_render_example_axz2"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://testlocation1_render_example_user:vwnbFRR7eoCYQyIDjtrA25a5EAblZVnJ@dpg-cuiel12n91rc73bj57mg-a.frankfurt-postgres.render.com/testlocation1_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -63,12 +63,25 @@ class UserData(db.Model):
 class RelationshipData(db.Model):
     __tablename__ = 'relationshipData'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
+
     email = db.Column(db.String(200))
     lookingfor = db.Column(db.String(255))
     openfor = db.Column(db.String(255))
 
     user = db.relationship('Task', backref=db.backref('get_relationship_data', lazy=True))    
+
+class LocationsData(db.Model):
+    __tablename__ = 'locationsData'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    location_number = db.Column(db.Integer, nullable=True)
+    location_name = db.Column(db.String(255), nullable=True)
+    lat = db.Column(db.Float, nullable=True)
+    lng = db.Column(db.Float, nullable=True)
+    max_users = db.Column(db.Integer, nullable=True)
+    space_left = db.Column(db.Boolean, nullable=True)
+    has_user_arrived = db.Column(db.Boolean, nullable=True)
+
+    user = db.relationship('Task', backref=db.backref('location_data', lazy=True))    
 
 class UserImages(db.Model):
     __tablename__ = 'userImage'
@@ -608,6 +621,24 @@ def get_relationship_data():
             'openfor': rel.openfor
         }
         for rel in relationships
+    ]
+    return jsonify(data)
+
+@app.route('/locationsData', methods=['GET'])
+def get_locations():
+    locations = LocationsData.query.all()
+    data = [
+        {
+            'id': loc.id,
+            'location_number': loc.location_number,
+            'location_name': loc.location_name,
+            'lat': loc.lat,
+            'lng': loc.lng,
+            'max_users': loc.max_users,
+            'space_left': loc.space_left,
+            'has_user_arrived': loc.has_user_arrived
+        }
+        for loc in locations
     ]
     return jsonify(data)
 
