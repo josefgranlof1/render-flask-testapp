@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://locationtest4_render_example_anrb_user:Es0qqb6U7HWJ6IEIjJbPKn1LbIab96Na@dpg-cuih0l56l47c73afan80-a.frankfurt-postgres.render.com/locationtest4_render_example_anrb"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://demofetchingapp_render_example_user:ISXMS9zYanGugsEr97JVwtbBNJttke2l@dpg-cuiufti3esus739mfnqg-a.frankfurt-postgres.render.com/demofetchingapp_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -49,34 +49,15 @@ class UserData(db.Model):
     __tablename__ = 'userdata'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
-    firstname = db.Column(db.String(255))
-    lastname = db.Column(db.String(255))
+    name = db.Column(db.String(255))
     email = db.Column(db.String(200))
     gender = db.Column(db.String(50))
     hobbies = db.Column(db.ARRAY(db.String))
     phone_number = db.Column(db.String(50))
     age = db.Column(db.String(10))
     bio = db.Column(db.Text)
-
+    
     user = db.relationship('Task', backref=db.backref('user_data', lazy=True))
-
-class RelationshipData(db.Model):
-    __tablename__ = 'relationshipData'
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
-    email = db.Column(db.String(200))
-    lookingfor = db.Column(db.String(255))
-    openfor = db.Column(db.String(255))
-
-    user = db.relationship('Task', backref=db.backref('get_relationship_data', lazy=True))    
-
-class LocationData(db.Model):
-    __tablename__ = 'locationData'
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
-    locationname = db.Column(db.String(200))
-
-    user = db.relationship('Task', backref=db.backref('getLocationData', lazy=True))    
 
 class UserImages(db.Model):
     __tablename__ = 'userImage'
@@ -129,6 +110,8 @@ def postData():
         print(e)
         return jsonify({'error': 'Internal Server Error'}), 500
 
+
+
 # POSTING USER DATA TO DATABASE
 @app.route('/userData', methods=['POST'])
 def postUserData():
@@ -141,44 +124,39 @@ def postUserData():
             return jsonify({'error': "No User registered with this mail"}), 400
 
         user_auth_id = user.id
-        firstname = data['firstname']
-        lastname = data['lastname']
+        name = data['name']
         gender = data['gender']
         hobbies = data['hobbies']
         phone_number = data['phone_number']
         age = data['age']
         bio = data['bio']
-    
+      
 
         # Check if user details already exist
         userDetails = UserData.query.filter_by(user_auth_id=user_auth_id).first()
 
         if userDetails:
             # Update existing user details
-            userDetails.firstname = firstname
-            userDetails.lastname = lastname
+            userDetails.name = name
             userDetails.email = newEmail
             userDetails.gender = gender
             userDetails.hobbies = hobbies
             userDetails.phone_number = phone_number
             userDetails.age = age
             userDetails.bio = bio
-
          
             message = "Updated user details"
         else:
             # Add new user details
             userDetails = UserData(
                 user_auth_id=user_auth_id,
-                firstname=firstname,
-                lastname=lastname,
+                name=name,
                 email=newEmail,
                 gender=gender,
                 hobbies=hobbies,
                 phone_number=phone_number,
                 age=age,
-                bio=bio,
-
+                bio=bio
             )
             db.session.add(userDetails)
             message = "Added user details"
@@ -188,99 +166,6 @@ def postUserData():
 
     except Exception as e:
         return jsonify({'error': 'Internal Server Error'}), 500
-
-""" # POSTING Relationships DATA TO DATABASE
-@app.route('/relationshipData', methods=['POST'])
-def postRelationshipsData():
-    try:  # Added closing parenthesis here
-        data = request.get_json()
-        newEmail = data['email']
-        user = Task.query.filter_by(email=newEmail).first()
-
-        if not user:
-            return jsonify({'error': "No User registered with this mail"}), 400
-
-        user_auth_id = user.id
-        relationships = data['relationships']
-        
-
-        # Check if user details already exist
-        userRelationships = RelationshipData.query.filter_by(user_auth_id=user_auth_id).first()
-
-        if userRelationships:
-            # Update existing user details
-            userRelationships.relationships = relationships            
-            message = "Updated user details"
-        else:
-            # Add new user details
-            userRelationships = RelationshipData(
-                user_auth_id=user_auth_id,
-                relationships=relationships,
-
-
-            )
-            db.session.add(userRelationships)
-            message = "Added user details"
-
-        db.session.commit()
-        return jsonify({'message': message}), 201
-
-    except Exception as e:
-        return jsonify({'error': 'Internal Server Error'}), 500     """    
-
-# POSTING Relationships DATA TO DATABASE 2025
-@app.route('/relationshipData', methods=['POST'])
-def postRelationshipsData():
-    try:
-        # Extract data from the request
-        data = request.get_json()
-        new_email = data['email']
-        lookingfor = data['lookingfor']
-        openfor = data['openfor']
-
-        # Validate input
-        if not new_email or not lookingfor or not openfor:
-            return jsonify({"error": "Missing required fields"}), 400
-
-        # Fetch the user by email
-        user = Task.query.filter_by(email=new_email).first()
-
-        if not user:
-            return jsonify({"error": "User not found"}), 404
-
-        user_auth_id = user.id
-        lookingfor = data['lookingfor']
-        openfor = data['openfor']
-
-        # Check if the user already has preferences
-        userrelationshipsDetails = RelationshipData.query.filter_by(user_auth_id=user_auth_id).first()
-
-        if userrelationshipsDetails:
-            # Update existing preference
-            userrelationshipsDetails.lookingfor = lookingfor
-            userrelationshipsDetails.openfor = openfor
-            userrelationshipsDetails.email = new_email
-
-            message = "Updated user relationshipData"
-        else:
-            # Create new preference
-            userrelationshipsDetails = RelationshipData(
-                user_auth_id=user_auth_id,
-                email=new_email,
-                lookingfor=lookingfor,
-                openfor=openfor
-            )
-            db.session.add(userrelationshipsDetails)
-            message = "Added new user relationshipData"
-
-        # Commit changes to the database
-        db.session.commit()
-        return jsonify({'message': message}), 201
-
-    except Exception as e:
-        print(f"Error: {e}")
-        return jsonify({'error': 'Internal Server Error'}), 500      
-
 
 @app.route('/upload_image', methods=['POST'])
 def upload_image():
@@ -360,6 +245,8 @@ def get_image(user_auth_id):
         }), 200
     else:
         return jsonify({"error": "No image found for the given user_auth_id"}), 404
+
+
     
 @app.route('/userData', methods=['GET'])
 def getUserData():
@@ -380,16 +267,14 @@ def getUserData():
 
             user = {
                 'id': userDetails.user_auth_id,
-                'firstname': userDetails.firstname,
-                'lastname': userDetails.lastname,
+                'name': userDetails.name,
                 'email': userDetails.email,
                 'gender': userDetails.gender,
                 'hobbies': userDetails.hobbies,
                 'phone_number': userDetails.phone_number,
                 'age': userDetails.age,
                 'bio': userDetails.bio,
-                'image_url': image_url,  # Include the image URL in the response
-
+                'image_url': image_url  # Include the image URL in the response
             }
             users.append(user)
         
@@ -398,61 +283,7 @@ def getUserData():
     except Exception as e:
         return jsonify({'error': 'Internal Server Error'}), 500
 
-# # Getting Relationships DATA FROM DATABASE 2025
-# @app.route('/relationshipData', methods=['GET'])
-# def getRelationshipData():
-#     try:
-#         # Query all user details
-#         userDetailsList = RelationshipData.query.all()
-        
-#         # Prepare the response data
-#         users = []
-#         for userDetails in userDetailsList:
 
-#             userDetails = RelationshipData.query.filter_by(user_auth_id=userDetails.user_auth_id).first()
-
-#             user = {
-#                 'id': userDetails.user_auth_id,
-#                 'email': userDetails.email,
-#                 'lookingfor': userDetails.lookingfor,
-#                 'openfor': userDetails.openfor,
-#             }
-#             users.append(user)
-        
-#         return jsonify({'users': users}), 200
-    
-#     except Exception as e:
-#         return jsonify({'error': 'Internal Server Error'}), 500
-
-# Getting Relationships DATA FROM DATABASE 2025
-@app.route('/relationshipData', methods=['GET'])
-def get_relationship_data():
-    relationships = RelationshipData.query.all()
-    data = [
-        {
-            'id': rel.id,
-            'user_auth_id': rel.user_auth_id,
-            'email': rel.email,
-            'lookingfor': rel.lookingfor,
-            'openfor': rel.openfor
-        }
-        for rel in relationships
-    ]
-    return jsonify(data)
-
-@app.route('/locationData', methods=['GET'])
-def getLocationData():
-    locations = LocationData.query.all()
-    data = [
-        {
-            'id': loc.id,
-            'user_auth_id': loc.user_auth_id,
-            'locationname': loc.locationname,
-
-        }
-        for loc in locations
-    ]
-    return jsonify(data)
 
 
 # USER SIGNIN METHOD
