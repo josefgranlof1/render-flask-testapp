@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://vings1_render_example_user:r19sabGvSzyGkZCbenOtIIJ6jt8ezGjc@dpg-cujmho0gph6c73biki6g-a.frankfurt-postgres.render.com/vings1_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://vings2_render_example_user:doFROfPrcBqsnwUI2PPKuSwupTj7d6ZQ@dpg-cujr4kt6l47c73c5vktg-a.frankfurt-postgres.render.com/vings2_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -181,45 +181,6 @@ def postUserData():
     except Exception as e:
         return jsonify({'error': 'Internal Server Error'}), 500
 
-""" # POSTING Relationships DATA TO DATABASE
-@app.route('/relationshipData', methods=['POST'])
-def postRelationshipsData():
-    try:  # Added closing parenthesis here
-        data = request.get_json()
-        newEmail = data['email']
-        user = Task.query.filter_by(email=newEmail).first()
-
-        if not user:
-            return jsonify({'error': "No User registered with this mail"}), 400
-
-        user_auth_id = user.id
-        relationships = data['relationships']
-        
-
-        # Check if user details already exist
-        userRelationships = RelationshipData.query.filter_by(user_auth_id=user_auth_id).first()
-
-        if userRelationships:
-            # Update existing user details
-            userRelationships.relationships = relationships            
-            message = "Updated user details"
-        else:
-            # Add new user details
-            userRelationships = RelationshipData(
-                user_auth_id=user_auth_id,
-                relationships=relationships,
-
-
-            )
-            db.session.add(userRelationships)
-            message = "Added user details"
-
-        db.session.commit()
-        return jsonify({'message': message}), 201
-
-    except Exception as e:
-        return jsonify({'error': 'Internal Server Error'}), 500     """    
-
 # POSTING Relationships DATA TO DATABASE 2025
 @app.route('/relationshipData', methods=['POST'])
 def postRelationshipsData():
@@ -389,32 +350,6 @@ def getUserData():
     
     except Exception as e:
         return jsonify({'error': 'Internal Server Error'}), 500
-
-# # Getting Relationships DATA FROM DATABASE 2025
-# @app.route('/relationshipData', methods=['GET'])
-# def getRelationshipData():
-#     try:
-#         # Query all user details
-#         userDetailsList = RelationshipData.query.all()
-        
-#         # Prepare the response data
-#         users = []
-#         for userDetails in userDetailsList:
-
-#             userDetails = RelationshipData.query.filter_by(user_auth_id=userDetails.user_auth_id).first()
-
-#             user = {
-#                 'id': userDetails.user_auth_id,
-#                 'email': userDetails.email,
-#                 'lookingfor': userDetails.lookingfor,
-#                 'openfor': userDetails.openfor,
-#             }
-#             users.append(user)
-        
-#         return jsonify({'users': users}), 200
-    
-#     except Exception as e:
-#         return jsonify({'error': 'Internal Server Error'}), 500
 
 # Getting Relationships DATA FROM DATABASE 2025
 @app.route('/relationshipData', methods=['GET'])
