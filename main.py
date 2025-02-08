@@ -49,14 +49,15 @@ class UserData(db.Model):
     __tablename__ = 'userdata'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
-    name = db.Column(db.String(255))
+    firstname = db.Column(db.String(255))
+    lastname = db.Column(db.String(255))
     email = db.Column(db.String(200))
     gender = db.Column(db.String(50))
     hobbies = db.Column(db.ARRAY(db.String))
     phone_number = db.Column(db.String(50))
     age = db.Column(db.String(10))
     bio = db.Column(db.Text)
-    
+
     user = db.relationship('Task', backref=db.backref('user_data', lazy=True))
 
 class RelationshipData(db.Model):
@@ -120,8 +121,6 @@ def postData():
         print(e)
         return jsonify({'error': 'Internal Server Error'}), 500
 
-
-
 # POSTING USER DATA TO DATABASE
 @app.route('/userData', methods=['POST'])
 def postUserData():
@@ -134,39 +133,44 @@ def postUserData():
             return jsonify({'error': "No User registered with this mail"}), 400
 
         user_auth_id = user.id
-        name = data['name']
+        firstname = data['firstname']
+        lastname = data['lastname']
         gender = data['gender']
         hobbies = data['hobbies']
         phone_number = data['phone_number']
         age = data['age']
         bio = data['bio']
-      
+    
 
         # Check if user details already exist
         userDetails = UserData.query.filter_by(user_auth_id=user_auth_id).first()
 
         if userDetails:
             # Update existing user details
-            userDetails.name = name
+            userDetails.firstname = firstname
+            userDetails.lastname = lastname
             userDetails.email = newEmail
             userDetails.gender = gender
             userDetails.hobbies = hobbies
             userDetails.phone_number = phone_number
             userDetails.age = age
             userDetails.bio = bio
+
          
             message = "Updated user details"
         else:
             # Add new user details
             userDetails = UserData(
                 user_auth_id=user_auth_id,
-                name=name,
+                firstname=firstname,
+                lastname=lastname,
                 email=newEmail,
                 gender=gender,
                 hobbies=hobbies,
                 phone_number=phone_number,
                 age=age,
-                bio=bio
+                bio=bio,
+
             )
             db.session.add(userDetails)
             message = "Added user details"
@@ -176,7 +180,45 @@ def postUserData():
 
     except Exception as e:
         return jsonify({'error': 'Internal Server Error'}), 500
-    
+
+""" # POSTING Relationships DATA TO DATABASE
+@app.route('/relationshipData', methods=['POST'])
+def postRelationshipsData():
+    try:  # Added closing parenthesis here
+        data = request.get_json()
+        newEmail = data['email']
+        user = Task.query.filter_by(email=newEmail).first()
+
+        if not user:
+            return jsonify({'error': "No User registered with this mail"}), 400
+
+        user_auth_id = user.id
+        relationships = data['relationships']
+        
+
+        # Check if user details already exist
+        userRelationships = RelationshipData.query.filter_by(user_auth_id=user_auth_id).first()
+
+        if userRelationships:
+            # Update existing user details
+            userRelationships.relationships = relationships            
+            message = "Updated user details"
+        else:
+            # Add new user details
+            userRelationships = RelationshipData(
+                user_auth_id=user_auth_id,
+                relationships=relationships,
+
+
+            )
+            db.session.add(userRelationships)
+            message = "Added user details"
+
+        db.session.commit()
+        return jsonify({'message': message}), 201
+
+    except Exception as e:
+        return jsonify({'error': 'Internal Server Error'}), 500     """    
 
 # POSTING Relationships DATA TO DATABASE 2025
 @app.route('/relationshipData', methods=['POST'])
@@ -229,7 +271,7 @@ def postRelationshipsData():
 
     except Exception as e:
         print(f"Error: {e}")
-        return jsonify({'error': 'Internal Server Error'}), 500    
+        return jsonify({'error': 'Internal Server Error'}), 500      
 
 
 @app.route('/upload_image', methods=['POST'])
@@ -310,8 +352,6 @@ def get_image(user_auth_id):
         }), 200
     else:
         return jsonify({"error": "No image found for the given user_auth_id"}), 404
-
-
     
 @app.route('/userData', methods=['GET'])
 def getUserData():
@@ -332,14 +372,16 @@ def getUserData():
 
             user = {
                 'id': userDetails.user_auth_id,
-                'name': userDetails.name,
+                'firstname': userDetails.firstname,
+                'lastname': userDetails.lastname,
                 'email': userDetails.email,
                 'gender': userDetails.gender,
                 'hobbies': userDetails.hobbies,
                 'phone_number': userDetails.phone_number,
                 'age': userDetails.age,
                 'bio': userDetails.bio,
-                'image_url': image_url  # Include the image URL in the response
+                'image_url': image_url,  # Include the image URL in the response
+
             }
             users.append(user)
         
@@ -348,6 +390,31 @@ def getUserData():
     except Exception as e:
         return jsonify({'error': 'Internal Server Error'}), 500
 
+# # Getting Relationships DATA FROM DATABASE 2025
+# @app.route('/relationshipData', methods=['GET'])
+# def getRelationshipData():
+#     try:
+#         # Query all user details
+#         userDetailsList = RelationshipData.query.all()
+        
+#         # Prepare the response data
+#         users = []
+#         for userDetails in userDetailsList:
+
+#             userDetails = RelationshipData.query.filter_by(user_auth_id=userDetails.user_auth_id).first()
+
+#             user = {
+#                 'id': userDetails.user_auth_id,
+#                 'email': userDetails.email,
+#                 'lookingfor': userDetails.lookingfor,
+#                 'openfor': userDetails.openfor,
+#             }
+#             users.append(user)
+        
+#         return jsonify({'users': users}), 200
+    
+#     except Exception as e:
+#         return jsonify({'error': 'Internal Server Error'}), 500
 
 # Getting Relationships DATA FROM DATABASE 2025
 @app.route('/relationshipData', methods=['GET'])
