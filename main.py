@@ -70,6 +70,14 @@ class RelationshipData(db.Model):
 
     user = db.relationship('Task', backref=db.backref('get_relationship_data', lazy=True))    
 
+class LocationData(db.Model):
+    __tablename__ = 'locationData'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
+    locationname = db.Column(db.String(200))
+
+    user = db.relationship('Task', backref=db.backref('getLocationData', lazy=True))    
+
 class UserImages(db.Model):
     __tablename__ = 'userImage'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -364,6 +372,21 @@ def get_relationship_data():
             'openfor': rel.openfor
         }
         for rel in relationships
+    ]
+    return jsonify(data)
+
+
+@app.route('/locationData', methods=['GET'])
+def getLocationData():
+    locations = LocationData.query.all()
+    data = [
+        {
+            'id': loc.id,
+            'user_auth_id': loc.user_auth_id,
+            'locationname': loc.locationname,
+
+        }
+        for loc in locations
     ]
     return jsonify(data)
 
