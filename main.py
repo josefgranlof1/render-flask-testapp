@@ -384,6 +384,7 @@ def getLocationData():
     data = [
         {
             'id': loc.id,
+            'user_auth_id': loc.user_auth_id,
             'locationName': loc.locationName,
             'lat': loc.lat,
             'lng': loc.lng,
