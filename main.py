@@ -73,6 +73,7 @@ class RelationshipData(db.Model):
 class LocationData(db.Model):
     __tablename__ = 'locationData'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     locationName = db.Column(db.String(200))
     lat = db.Column(db.Float)  
     lng = db.Column(db.Float) 
