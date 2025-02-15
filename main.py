@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://locationtest5_render_example_user:H0huWnvgi0AypOxKrCSjgOSPOZZOkgng@dpg-cumu7rtds78s73eri3t0-a.frankfurt-postgres.render.com/locationtest5_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://language1_example_render_user:KKsnkNuKb5hcL5MVIuHZLnQHOISZHR6U@dpg-cuoaist2ng1s73e64m50-a.frankfurt-postgres.render.com/language1_example_render"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -67,6 +67,7 @@ class RelationshipData(db.Model):
     email = db.Column(db.String(200))
     lookingfor = db.Column(db.String(255))
     openfor = db.Column(db.String(255))
+    languages = db.Column(db.ARRAY(db.String))
 
     user = db.relationship('Task', backref=db.backref('get_relationship_data', lazy=True))    
 
@@ -197,6 +198,8 @@ def postRelationshipsData():
         new_email = data['email']
         lookingfor = data['lookingfor']
         openfor = data['openfor']
+        languages = data['languages']
+
 
         # Validate input
         if not new_email or not lookingfor or not openfor:
@@ -211,6 +214,8 @@ def postRelationshipsData():
         user_auth_id = user.id
         lookingfor = data['lookingfor']
         openfor = data['openfor']
+        languages = data['languages']
+
 
         # Check if the user already has preferences
         userrelationshipsDetails = RelationshipData.query.filter_by(user_auth_id=user_auth_id).first()
@@ -218,7 +223,8 @@ def postRelationshipsData():
         if userrelationshipsDetails:
             # Update existing preference
             userrelationshipsDetails.lookingfor = lookingfor
-            userrelationshipsDetails.openfor = openfor
+            userrelationshipsDetails.openfor = openfor,
+            userrelationshipsDetails.languages = languages,
             userrelationshipsDetails.email = new_email
 
             message = "Updated user relationshipData"
@@ -228,7 +234,8 @@ def postRelationshipsData():
                 user_auth_id=user_auth_id,
                 email=new_email,
                 lookingfor=lookingfor,
-                openfor=openfor
+                openfor=openfor,
+                languages=languages
             )
             db.session.add(userrelationshipsDetails)
             message = "Added new user relationshipData"
@@ -368,7 +375,9 @@ def get_relationship_data():
             'user_auth_id': rel.user_auth_id,
             'email': rel.email,
             'lookingfor': rel.lookingfor,
-            'openfor': rel.openfor
+            'openfor': rel.openfor,
+            'languages': rel.languages,
+
         }
         for rel in relationships
     ]
