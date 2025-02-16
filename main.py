@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://rework1_render_example_user:BvUalJbk5Ukn08uFhnvo8oDh9BfOJb65@dpg-cuos9cl2ng1s73ecb2o0-a.frankfurt-postgres.render.com/rework1_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://language1_example_render_wbne_user:43kkbfTqlOJmkJ14Fv4sEEiJXq4A2BNN@dpg-cuostft6l47c73cgltbg-a.frankfurt-postgres.render.com/language1_example_render_wbne"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -65,15 +65,9 @@ class RelationshipData(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     email = db.Column(db.String(200))
+    lookingfor = db.Column(db.String(255))
+    openfor = db.Column(db.String(255))
     languages = db.Column(db.ARRAY(db.String))
-    lookingFor = db.Column(db.String(255))
-    openFor = db.Column(db.String(255))
-    loveLanguage = db.Column(db.String(255))
-    personality = db.Column(db.String(255))
-    lifestyle = db.Column(db.String(255))
-    family = db.Column(db.String(255))
-    diet = db.Column(db.String(255))
-    drinking = db.Column(db.String(255))
 
     user = db.relationship('Task', backref=db.backref('get_relationship_data', lazy=True))    
 
@@ -194,7 +188,6 @@ def postUserData():
 
     except Exception as e:
         return jsonify({'error': 'Internal Server Error'}), 500
-       
 
 # POSTING Relationships DATA TO DATABASE 2025
 @app.route('/relationshipData', methods=['POST'])
@@ -206,12 +199,6 @@ def postRelationshipsData():
         lookingfor = data['lookingfor']
         openfor = data['openfor']
         languages = data['languages']
-        loveLanguage = data['loveLanguage']
-        personality = data['personality']
-        lifestyle = data['lifestyle']
-        family = data['family']
-        diet = data['diet']
-        drinking = data['drinking']
 
 
         # Validate input
@@ -228,12 +215,6 @@ def postRelationshipsData():
         lookingfor = data['lookingfor']
         openfor = data['openfor']
         languages = data['languages']
-        loveLanguage = data['loveLanguage']
-        personality = data['personality']
-        lifestyle = data['lifestyle']
-        family = data['family']
-        diet = data['diet']
-        drinking = data['drinking']
 
 
         # Check if the user already has preferences
@@ -244,14 +225,7 @@ def postRelationshipsData():
             userrelationshipsDetails.lookingfor = lookingfor
             userrelationshipsDetails.openfor = openfor,
             userrelationshipsDetails.languages = languages,
-            userrelationshipsDetails.email = new_email,
-            userrelationshipsDetails.loveLanguage = loveLanguage,
-            userrelationshipsDetails.personality = personality,
-            userrelationshipsDetails.lifestyle = lifestyle,
-            userrelationshipsDetails.family = family,
-            userrelationshipsDetails.diet = diet,
-            userrelationshipsDetails.drinking = drinking,
-            
+            userrelationshipsDetails.email = new_email
 
             message = "Updated user relationshipData"
         else:
@@ -261,14 +235,7 @@ def postRelationshipsData():
                 email=new_email,
                 lookingfor=lookingfor,
                 openfor=openfor,
-                languages=languages,
-                loveLanguage=loveLanguage,
-                personality=personality,
-                lifestyle=lifestyle,
-                family=family,
-                diet=diet,
-                drinking=drinking,
-                
+                languages=languages
             )
             db.session.add(userrelationshipsDetails)
             message = "Added new user relationshipData"
@@ -397,7 +364,6 @@ def getUserData():
     
     except Exception as e:
         return jsonify({'error': 'Internal Server Error'}), 500
-    
 
 # Getting Relationships DATA FROM DATABASE 2025
 @app.route('/relationshipData', methods=['GET'])
@@ -411,12 +377,6 @@ def get_relationship_data():
             'lookingfor': rel.lookingfor,
             'openfor': rel.openfor,
             'languages': rel.languages,
-            'loveLanguage': rel.loveLanguage,
-            'personality': rel.personality,
-            'lifestyle': rel.lifestyle,
-            'family': rel.family,
-            'diet': rel.diet,
-            'drinking': rel.drinking,
 
         }
         for rel in relationships
