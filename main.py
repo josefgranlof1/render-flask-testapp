@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://rework1_render_example_r16n_user:i9IAM8FL9BkpoELTNuBwW1Hyf3wJrgpn@dpg-cuot3plsvqrc73esjcl0-a.frankfurt-postgres.render.com/rework1_render_example_r16n"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://rework3_render_example_user:ohOZdM8RrguBuePgF9LTAgEwuzK2JR1F@dpg-cupk1kpopnds7395piq0-a.frankfurt-postgres.render.com/rework3_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -53,7 +53,6 @@ class UserData(db.Model):
     lastname = db.Column(db.String(255))
     email = db.Column(db.String(200))
     gender = db.Column(db.String(50))
-    hobbies = db.Column(db.ARRAY(db.String))
     phone_number = db.Column(db.String(50))
     age = db.Column(db.String(10))
     bio = db.Column(db.Text)
@@ -68,6 +67,7 @@ class RelationshipData(db.Model):
     lookingfor = db.Column(db.String(255))
     openfor = db.Column(db.String(255))
     languages = db.Column(db.ARRAY(db.String))
+    hobbies = db.Column(db.ARRAY(db.String))
     loveLanguage = db.Column(db.String(255))
     personality = db.Column(db.String(255))
     lifestyle = db.Column(db.String(255))
@@ -150,7 +150,6 @@ def postUserData():
         firstname = data['firstname']
         lastname = data['lastname']
         gender = data['gender']
-        hobbies = data['hobbies']
         phone_number = data['phone_number']
         age = data['age']
         bio = data['bio']
@@ -165,7 +164,6 @@ def postUserData():
             userDetails.lastname = lastname
             userDetails.email = newEmail
             userDetails.gender = gender
-            userDetails.hobbies = hobbies
             userDetails.phone_number = phone_number
             userDetails.age = age
             userDetails.bio = bio
@@ -180,7 +178,6 @@ def postUserData():
                 lastname=lastname,
                 email=newEmail,
                 gender=gender,
-                hobbies=hobbies,
                 phone_number=phone_number,
                 age=age,
                 bio=bio,
@@ -205,6 +202,7 @@ def postRelationshipsData():
         lookingfor = data['lookingfor']
         openfor = data['openfor']
         languages = data['languages']
+        hobbies = data['hobbies']
         loveLanguage = data['loveLanguage']
         personality = data['personality']
         lifestyle = data['lifestyle']
@@ -226,6 +224,7 @@ def postRelationshipsData():
         lookingfor = data['lookingfor']
         openfor = data['openfor']
         languages = data['languages']
+        hobbies = data['hobbies']
         loveLanguage = data['loveLanguage']
         personality = data['personality']
         lifestyle = data['lifestyle']
@@ -241,6 +240,7 @@ def postRelationshipsData():
             userrelationshipsDetails.lookingfor = lookingfor
             userrelationshipsDetails.openfor = openfor,
             userrelationshipsDetails.languages = languages,
+            userrelationshipsDetails.hobbies = hobbies,
             userrelationshipsDetails.email = new_email,
             userrelationshipsDetails.loveLanguage = loveLanguage,
             userrelationshipsDetails.personality = personality,
@@ -258,6 +258,7 @@ def postRelationshipsData():
                 lookingfor=lookingfor,
                 openfor=openfor,
                 languages=languages,
+                hobbies=hobbies,
                 loveLanguage=loveLanguage,
                 personality=personality,
                 lifestyle=lifestyle,
@@ -379,7 +380,6 @@ def getUserData():
                 'lastname': userDetails.lastname,
                 'email': userDetails.email,
                 'gender': userDetails.gender,
-                'hobbies': userDetails.hobbies,
                 'phone_number': userDetails.phone_number,
                 'age': userDetails.age,
                 'bio': userDetails.bio,
@@ -405,6 +405,7 @@ def get_relationship_data():
             'lookingfor': rel.lookingfor,
             'openfor': rel.openfor,
             'languages': rel.languages,
+            'hobbies': rel.hobbies,
             'loveLanguage': rel.loveLanguage,
             'personality': rel.personality,
             'lifestyle': rel.lifestyle,
