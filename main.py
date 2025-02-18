@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://rework3_render_example_user:ohOZdM8RrguBuePgF9LTAgEwuzK2JR1F@dpg-cupk1kpopnds7395piq0-a.frankfurt-postgres.render.com/rework3_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://demofetchingapp_render_example_rfuq_user:ZlvHDUV2XQmqR1TubeKJCmZoPKcsQROf@dpg-cuq5tbbtq21c73a2fba0-a.frankfurt-postgres.render.com/demofetchingapp_render_example_rfuq"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -53,6 +53,7 @@ class UserData(db.Model):
     lastname = db.Column(db.String(255))
     email = db.Column(db.String(200))
     gender = db.Column(db.String(50))
+    hobbies = db.Column(db.ARRAY(db.String))
     phone_number = db.Column(db.String(50))
     age = db.Column(db.String(10))
     bio = db.Column(db.Text)
@@ -66,23 +67,8 @@ class RelationshipData(db.Model):
     email = db.Column(db.String(200))
     lookingfor = db.Column(db.String(255))
     openfor = db.Column(db.String(255))
-    languages = db.Column(db.ARRAY(db.String))
-    hobbies = db.Column(db.ARRAY(db.String))
-    loveLanguage = db.Column(db.String(255))
-    personality = db.Column(db.String(255))
-    lifestyle = db.Column(db.String(255))
-    family = db.Column(db.String(255))
-    diet = db.Column(db.String(255))
-    drinking = db.Column(db.String(255))
 
     user = db.relationship('Task', backref=db.backref('get_relationship_data', lazy=True))    
-
-class LocationData(db.Model):
-    __tablename__ = 'locationData'
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    locationName = db.Column(db.String(200))
-    lat = db.Column(db.Float)  
-    lng = db.Column(db.Float) 
 
 class UserImages(db.Model):
     __tablename__ = 'userImage'
@@ -150,6 +136,7 @@ def postUserData():
         firstname = data['firstname']
         lastname = data['lastname']
         gender = data['gender']
+        hobbies = data['hobbies']
         phone_number = data['phone_number']
         age = data['age']
         bio = data['bio']
@@ -164,6 +151,7 @@ def postUserData():
             userDetails.lastname = lastname
             userDetails.email = newEmail
             userDetails.gender = gender
+            userDetails.hobbies = hobbies
             userDetails.phone_number = phone_number
             userDetails.age = age
             userDetails.bio = bio
@@ -178,6 +166,7 @@ def postUserData():
                 lastname=lastname,
                 email=newEmail,
                 gender=gender,
+                hobbies=hobbies,
                 phone_number=phone_number,
                 age=age,
                 bio=bio,
@@ -201,14 +190,6 @@ def postRelationshipsData():
         new_email = data['email']
         lookingfor = data['lookingfor']
         openfor = data['openfor']
-        languages = data['languages']
-        hobbies = data['hobbies']
-        loveLanguage = data['loveLanguage']
-        personality = data['personality']
-        lifestyle = data['lifestyle']
-        family = data['family']
-        diet = data['diet']
-        drinking = data['drinking']
 
         # Validate input
         if not new_email or not lookingfor or not openfor:
@@ -223,14 +204,6 @@ def postRelationshipsData():
         user_auth_id = user.id
         lookingfor = data['lookingfor']
         openfor = data['openfor']
-        languages = data['languages']
-        hobbies = data['hobbies']
-        loveLanguage = data['loveLanguage']
-        personality = data['personality']
-        lifestyle = data['lifestyle']
-        family = data['family']
-        diet = data['diet']
-        drinking = data['drinking']
 
         # Check if the user already has preferences
         userrelationshipsDetails = RelationshipData.query.filter_by(user_auth_id=user_auth_id).first()
@@ -238,16 +211,8 @@ def postRelationshipsData():
         if userrelationshipsDetails:
             # Update existing preference
             userrelationshipsDetails.lookingfor = lookingfor
-            userrelationshipsDetails.openfor = openfor,
-            userrelationshipsDetails.languages = languages,
-            userrelationshipsDetails.hobbies = hobbies,
-            userrelationshipsDetails.email = new_email,
-            userrelationshipsDetails.loveLanguage = loveLanguage,
-            userrelationshipsDetails.personality = personality,
-            userrelationshipsDetails.lifestyle = lifestyle,
-            userrelationshipsDetails.family = family,
-            userrelationshipsDetails.diet = diet,
-            userrelationshipsDetails.drinking = drinking,            
+            userrelationshipsDetails.openfor = openfor
+            userrelationshipsDetails.email = new_email
 
             message = "Updated user relationshipData"
         else:
@@ -256,15 +221,7 @@ def postRelationshipsData():
                 user_auth_id=user_auth_id,
                 email=new_email,
                 lookingfor=lookingfor,
-                openfor=openfor,
-                languages=languages,
-                hobbies=hobbies,
-                loveLanguage=loveLanguage,
-                personality=personality,
-                lifestyle=lifestyle,
-                family=family,
-                diet=diet,
-                drinking=drinking
+                openfor=openfor
             )
             db.session.add(userrelationshipsDetails)
             message = "Added new user relationshipData"
@@ -380,6 +337,7 @@ def getUserData():
                 'lastname': userDetails.lastname,
                 'email': userDetails.email,
                 'gender': userDetails.gender,
+                'hobbies': userDetails.hobbies,
                 'phone_number': userDetails.phone_number,
                 'age': userDetails.age,
                 'bio': userDetails.bio,
@@ -403,33 +361,9 @@ def get_relationship_data():
             'user_auth_id': rel.user_auth_id,
             'email': rel.email,
             'lookingfor': rel.lookingfor,
-            'openfor': rel.openfor,
-            'languages': rel.languages,
-            'hobbies': rel.hobbies,
-            'loveLanguage': rel.loveLanguage,
-            'personality': rel.personality,
-            'lifestyle': rel.lifestyle,
-            'family': rel.family,
-            'diet': rel.diet,
-            'drinking': rel.drinking,
+            'openfor': rel.openfor
         }
         for rel in relationships
-    ]
-    return jsonify(data)
-
-
-@app.route('/locationData', methods=['GET'])
-def getLocationData():
-    locations = LocationData.query.all()
-    data = [
-        {
-            'id': loc.id,
-            'locationName': loc.locationName,
-            'lat': loc.lat,
-            'lng': loc.lng,
-
-        }
-        for loc in locations
     ]
     return jsonify(data)
 
