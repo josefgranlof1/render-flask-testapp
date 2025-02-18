@@ -7,7 +7,7 @@ import os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://demofetchingapp_render_example_4o7c_user:ZrPZafOns5WK9235IXex1uJbyAPnoH8W@dpg-cuqb7llsvqrc73f98ung-a.frankfurt-postgres.render.com/demofetchingapp_render_example_4o7c"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://demofetchingapp_render_example_28pm_user:UKGzPU81cTk28MGr4UjT8H3V2kNRzI5f@dpg-cuqbqbi3esus738mla90-a.frankfurt-postgres.render.com/demofetchingapp_render_example_28pm"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -58,6 +58,16 @@ class UserData(db.Model):
     bio = db.Column(db.Text)
     
     user = db.relationship('Task', backref=db.backref('user_data', lazy=True))
+
+class RelationshipData(db.Model):
+    __tablename__ = 'relationshipData'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
+    email = db.Column(db.String(200))
+    lookingfor = db.Column(db.String(255))
+    openfor = db.Column(db.String(255))
+
+    user = db.relationship('Task', backref=db.backref('get_relationship_data', lazy=True))    
 
 class UserImages(db.Model):
     __tablename__ = 'userImage'
@@ -166,6 +176,60 @@ def postUserData():
 
     except Exception as e:
         return jsonify({'error': 'Internal Server Error'}), 500
+
+# POSTING Relationships DATA TO DATABASE 2025
+@app.route('/relationshipData', methods=['POST'])
+def postRelationshipsData():
+    try:
+        # Extract data from the request
+        data = request.get_json()
+        new_email = data['email']
+        lookingfor = data['lookingfor']
+        openfor = data['openfor']
+
+        # Validate input
+        if not new_email or not lookingfor or not openfor:
+            return jsonify({"error": "Missing required fields"}), 400
+
+        # Fetch the user by email
+        user = Task.query.filter_by(email=new_email).first()
+
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        user_auth_id = user.id
+        lookingfor = data['lookingfor']
+        openfor = data['openfor']
+
+        # Check if the user already has preferences
+        userrelationshipsDetails = RelationshipData.query.filter_by(user_auth_id=user_auth_id).first()
+
+        if userrelationshipsDetails:
+            # Update existing preference
+            userrelationshipsDetails.lookingfor = lookingfor
+            userrelationshipsDetails.openfor = openfor
+            userrelationshipsDetails.email = new_email
+
+            message = "Updated user relationshipData"
+        else:
+            # Create new preference
+            userrelationshipsDetails = RelationshipData(
+                user_auth_id=user_auth_id,
+                email=new_email,
+                lookingfor=lookingfor,
+                openfor=openfor
+            )
+            db.session.add(userrelationshipsDetails)
+            message = "Added new user relationshipData"
+
+        # Commit changes to the database
+        db.session.commit()
+        return jsonify({'message': message}), 201
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'error': 'Internal Server Error'}), 500      
+
 
 @app.route('/upload_image', methods=['POST'])
 def upload_image():
@@ -284,7 +348,21 @@ def getUserData():
         return jsonify({'error': 'Internal Server Error'}), 500
 
 
-
+# Getting Relationships DATA FROM DATABASE 2025
+@app.route('/relationshipData', methods=['GET'])
+def get_relationship_data():
+    relationships = RelationshipData.query.all()
+    data = [
+        {
+            'id': rel.id,
+            'user_auth_id': rel.user_auth_id,
+            'email': rel.email,
+            'lookingfor': rel.lookingfor,
+            'openfor': rel.openfor
+        }
+        for rel in relationships
+    ]
+    return jsonify(data)
 
 # USER SIGNIN METHOD
 @app.route('/sign-in', methods=['POST'])
