@@ -81,10 +81,11 @@ with app.app_context():
     db.create_all()
     
 
-def calculate_match_score(user1_data, user2_data, user1_rel, user2_rel):
+def get_match_score(user1_data, user2_data):
+    """Calculate a simple match score between two users based on age and hobbies"""
     score = 0
     
-    # Age compatibility (max 30 points)
+    # Age compatibility
     try:
         age_diff = abs(float(user1_data.age) - float(user2_data.age))
         if age_diff <= 5:
@@ -94,118 +95,145 @@ def calculate_match_score(user1_data, user2_data, user1_rel, user2_rel):
         elif age_diff <= 15:
             score += 10
     except (ValueError, TypeError):
-        pass 
+        pass
     
-    # Relationship preference match (max 40 points)
-    if user1_rel.lookingfor == user2_rel.lookingfor:
-        score += 20
-    if user1_rel.openfor == user2_rel.openfor:
-        score += 20
-    
-    # Common hobbies (max 30 points)
+    # Common hobbies
     if user1_data.hobbies and user2_data.hobbies:
         common_hobbies = set(user1_data.hobbies).intersection(set(user2_data.hobbies))
-        score += min(len(common_hobbies) * 10, 30)  # Cap at 30 points
+        score += min(len(common_hobbies) * 10, 30)
     
     return score
 
 def get_user_matches(user_id, limit=5):
+    """Get top matches for a user"""
     try:
-        # Get user data and preferences
-        user_data = UserData.query.filter_by(user_auth_id=user_id).first()
-        if not user_data:
-            return None, "User not found"
+        # First get the user's gender
+        user = UserData.query.filter_by(user_auth_id=user_id).first()
+        if not user:
+            print(f"No user found for ID: {user_id}")
+            return []
             
-        user_rel = RelationshipData.query.filter_by(user_auth_id=user_id).first()
-        if not user_rel:
-            return None, "User relationship preferences not found"
+        # Get users of opposite gender
+        target_gender = 'Woman' if user.gender == 'Men' else 'Men'
+        all_matches = UserData.query.filter(
+            UserData.gender == target_gender,
+            UserData.user_auth_id != user_id
+        ).all()
         
-        # Get opposite gender users
-        target_gender = 'Female' if user_data.gender.lower() == 'Male' else 'Male'
-        potential_matches = (
-            db.session.query(UserData, RelationshipData)
-            .join(RelationshipData, UserData.user_auth_id == RelationshipData.user_auth_id)
-            .filter(UserData.gender.ilike(target_gender))
-            .filter(UserData.user_auth_id != user_id)
-            .all()
-        )
+        # If no matches found in opposite gender, get any available user of opposite gender
+        if not all_matches and user.gender == 'Woman':
+            all_matches = UserData.query.filter(
+                UserData.gender == 'Men'
+            ).all()
         
-        # Calculate scores and prepare matches
-        matches = []
-        for match_data, match_rel in potential_matches:
-            score = calculate_match_score(user_data, match_data, user_rel, match_rel)
-
-            image_url = None
-            user_image = UserImages.query.filter_by(user_auth_id=match_data.user_auth_id).first()
-            if user_image and user_image.imageString:
-                image_url = f"{request.host_url}uploads/{user_image.imageString}"
-            
-            matches.append({
-                'user_id': match_data.user_auth_id,
-                'score': score,
-                'details': {
-                    'firstname': match_data.firstname,
-                    'lastname': match_data.lastname,
-                    'age': match_data.age,
-                    'bio': match_data.bio,
-                    'hobbies': match_data.hobbies,
-                    'image_url': image_url,
-                    'relationship_preferences': {
-                        'lookingfor': match_rel.lookingfor,
-                        'openfor': match_rel.openfor
-                    }
-                }
+        # Format results
+        result = []
+        for match in all_matches[:limit]:  # Take only up to limit matches
+            result.append({
+                'user_id': match.user_auth_id,
+                'name': match.name,
+                'age': match.age,
+                'bio': match.bio,
+                'hobbies': match.hobbies
             })
-        
-        # Sort by score and get top matches
-        matches.sort(key=lambda x: x['score'], reverse=True)
-        return matches[:limit], None
-        
+            
+        return result
     except Exception as e:
-        return None, str(e)
+        print(f"Error in get_user_matches: {str(e)}")
+        return []
+
+def match_all_users():
+    """Match all users with someone from opposite gender"""
+    try:
+        # Get all users grouped by gender
+        males = UserData.query.filter(UserData.gender.ilike('Men')).all()
+        females = UserData.query.filter(UserData.gender.ilike('Woman')).all()
+        
+        # Initialize results dictionary
+        matches = {}
+        
+        # If either gender group is empty, return empty matches
+        if not males or not females:
+            return matches
+        
+        # Create a pool of available users
+        available_males = males.copy()
+        available_females = females.copy()
+        
+        # Match each user with their best available match
+        while available_males and available_females:
+            male = available_males[0]
+            
+            # Find best female match for current male
+            best_score = -1
+            best_match = None
+            
+            for female in available_females:
+                score = get_match_score(male, female)
+                if score > best_score:
+                    best_score = score
+                    best_match = female
+            
+            # Create the match
+            if best_match:
+                matches[male.user_auth_id] = {
+                    'match_id': best_match.user_auth_id,
+                    'name': best_match.name,
+                    'age': best_match.age,
+                    'score': best_score
+                }
+                matches[best_match.user_auth_id] = {
+                    'match_id': male.user_auth_id,
+                    'name': male.name,
+                    'age': male.age,
+                    'score': best_score
+                }
+                available_males.remove(male)
+                available_females.remove(best_match)
+        
+        # Handle remaining users (if any gender has more users)
+        # Match them with the highest scoring already-matched user
+        remaining = available_males if available_males else available_females
+        opposite_list = females if available_males else males
+        
+        for user in remaining:
+            best_score = -1
+            best_match = None
+            
+            for potential_match in opposite_list:
+                score = get_match_score(user, potential_match)
+                if score > best_score:
+                    best_score = score
+                    best_match = potential_match
+            
+            if best_match:
+                matches[user.user_auth_id] = {
+                    'match_id': best_match.user_auth_id,
+                    'name': best_match.name,
+                    'age': best_match.age,
+                    'score': best_score
+                }
+        
+        return matches
+    
+    except Exception as e:
+        print(f"Error in match_all_users: {str(e)}")
+        return {}
 
 # Given a user id returns the best 5 matches sorted
 @app.route('/match/<int:user_id>', methods=['GET'])
 def get_matches_endpoint(user_id):
-    matches, error = get_user_matches(user_id, limit=5)
-    
-    if error:
-        return jsonify({'error': error}), 404 if error in ["User not found", "User relationship preferences not found"] else 500
-        
+    matches = get_user_matches(user_id)
     return jsonify({
         'user_id': user_id,
         'matches': matches
-    }), 200
+    })
 
 # Get all users best matches
 @app.route('/matches', methods=['GET'])
 def get_all_matches():
-    try:
-        users = (
-            db.session.query(UserData, RelationshipData)
-            .join(RelationshipData, UserData.user_auth_id == RelationshipData.user_auth_id)
-            .all()
-        )
-        
-        all_matches = {}
-        for user_data, user_rel in users:
-            matches, error = get_user_matches(user_data.user_auth_id, limit=1)
-            
-            if matches and not error:
-                all_matches[user_data.user_auth_id] = {
-                    'user': {
-                        'id': user_data.user_auth_id,
-                        'firstname': user_data.firstname,
-                        'lastname': user_data.lastname,
-                        'gender': user_data.gender
-                    },
-                    'best_match': matches[0] if matches else None
-                }
-        
-        return jsonify({'matches': all_matches}), 200
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    matches = match_all_users()
+    return jsonify({'matches': matches})
 
 
 # METHOD TO GET AUTHENTICATED USERS LIST
@@ -625,6 +653,12 @@ def get_chats():
     ]
 
     return jsonify(chat_history)
+
+
+    
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080)
 
 
     
