@@ -5,6 +5,9 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO, join_room, send, emit
 import os
 from werkzeug.utils import secure_filename
+from datetime import datetime, timedelta
+from sqlalchemy import or_, and_
+
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://demofetchingapp_render_example_3k3t_user:2wFg3nlOeRvE2Twq9vWB4vdsQNH9w4Op@dpg-cuqvoq56l47c73cjfhe0-a.frankfurt-postgres.render.com/demofetchingapp_render_example_3k3t"
@@ -79,6 +82,317 @@ class UserImages(db.Model):
 
 with app.app_context():
     db.create_all()
+    
+"""
+    BEGIN: 
+    - Add the model definitions (UserPreference and Match classes) near your other model definitions, before the with app.app_context() block where you create the tables.
+    - Add the new API endpoints (/preference, /matches/<email>, and /update_match_status) alongside your other route handlers.
+    - Add the helper function process_potential_match() outside of any route handler, making it a standalone function.
+"""
+
+class UserPreference(db.Model):
+    __tablename__ = 'user_preference'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
+    preferred_user_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
+    preference = db.Column(db.String(20), nullable=False)  # 'like', 'reject', 'save_later'
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user = db.relationship('Task', foreign_keys=[user_id], backref=db.backref('preferences', lazy=True))
+    preferred_user = db.relationship('Task', foreign_keys=[preferred_user_id], backref=db.backref('preferred_by', lazy=True))
+
+
+class Match(db.Model):
+    __tablename__ = 'matches'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user1_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
+    user2_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
+    match_date = db.Column(db.DateTime, default=datetime.utcnow)
+    visible_after = db.Column(db.DateTime)
+    status = db.Column(db.String(20), default='pending')  # 'pending', 'active', 'deleted'
+    
+    # Relationships
+    user1 = db.relationship('Task', foreign_keys=[user1_id], backref=db.backref('matches_as_user1', lazy=True))
+    user2 = db.relationship('Task', foreign_keys=[user2_id], backref=db.backref('matches_as_user2', lazy=True))
+
+
+# Create the tables
+with app.app_context():
+    db.create_all()
+
+
+# API Endpoints
+
+@app.route('/preference', methods=['POST'])
+def set_preference():
+    try:
+        data = request.get_json()
+        user_email = data.get('user_email')
+        preferred_user_email = data.get('preferred_user_email')
+        preference = data.get('preference')  # 'like', 'reject', 'save_later'
+        
+        # Validate inputs
+        if not user_email or not preferred_user_email or not preference:
+            return jsonify({'error': 'Missing required fields'}), 400
+            
+        if preference not in ['like', 'reject', 'save_later']:
+            return jsonify({'error': 'Invalid preference type'}), 400
+            
+        # Get user IDs from emails
+        user = Task.query.filter_by(email=user_email).first()
+        preferred_user = Task.query.filter_by(email=preferred_user_email).first()
+        
+        if not user or not preferred_user:
+            return jsonify({'error': 'One or both users not found'}), 404
+            
+        # Check if preference already exists
+        existing_preference = UserPreference.query.filter_by(
+            user_id=user.id, 
+            preferred_user_id=preferred_user.id
+        ).first()
+        
+        if existing_preference:
+            # Update existing preference
+            existing_preference.preference = preference
+            existing_preference.timestamp = datetime.utcnow()
+        else:
+            # Create new preference
+            new_preference = UserPreference(
+                user_id=user.id,
+                preferred_user_id=preferred_user.id,
+                preference=preference
+            )
+            db.session.add(new_preference)
+        
+        # Check if this creates a match
+        process_potential_match(user.id, preferred_user.id)
+        
+        db.session.commit()
+        
+        return jsonify({'message': f'Preference set to {preference}'}), 201
+        
+    except Exception as e:
+        print(f"Error in set_preference: {str(e)}")
+        return jsonify({'error': 'Internal Server Error'}), 500
+
+
+def process_potential_match(user1_id, user2_id):
+    """Process potential match between two users based on their preferences"""
+    # Get preferences in both directions
+    pref1 = UserPreference.query.filter_by(user_id=user1_id, preferred_user_id=user2_id).first()
+    pref2 = UserPreference.query.filter_by(user_id=user2_id, preferred_user_id=user1_id).first()
+    
+    # If either preference doesn't exist yet, no match to process
+    if not pref1 or not pref2:
+        return
+    
+    # Check if there's an existing match
+    existing_match = Match.query.filter(
+        or_(
+            and_(Match.user1_id == user1_id, Match.user2_id == user2_id),
+            and_(Match.user1_id == user2_id, Match.user2_id == user1_id)
+        )
+    ).first()
+    
+    # Case I: Both users like each other
+    if pref1.preference == 'like' and pref2.preference == 'like':
+        if existing_match:
+            # Update match status
+            existing_match.status = 'active'
+            existing_match.visible_after = datetime.utcnow() + timedelta(minutes=20)
+        else:
+            # Create new match with 20 minute delay
+            new_match = Match(
+                user1_id=user1_id,
+                user2_id=user2_id,
+                visible_after=datetime.utcnow() + timedelta(minutes=20),
+                status='active'
+            )
+            db.session.add(new_match)
+    
+    # Case II: One or both users rejected
+    elif pref1.preference == 'reject' or pref2.preference == 'reject':
+        if existing_match:
+            # Mark match as deleted
+            existing_match.status = 'deleted'
+    
+    # Case III & IV: Save for later scenarios
+    elif pref1.preference == 'save_later' or pref2.preference == 'save_later':
+        # Only proceed if neither preference is 'reject'
+        if pref1.preference != 'reject' and pref2.preference != 'reject':
+            if not existing_match:
+                # Create pending match
+                new_match = Match(
+                    user1_id=user1_id,
+                    user2_id=user2_id,
+                    status='pending',
+                    visible_after=datetime.utcnow()  # Visible immediately, but pending
+                )
+                db.session.add(new_match)
+
+
+@app.route('/matches/<email>', methods=['GET'])
+def get_user_matches(email):
+    try:
+        user = Task.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # Get all matches for this user that are visible now
+        current_time = datetime.utcnow()
+        matches = Match.query.filter(
+            or_(
+                Match.user1_id == user.id,
+                Match.user2_id == user.id
+            ),
+            Match.status != 'deleted',
+            Match.visible_after <= current_time
+        ).all()
+        
+        # Format the response
+        result = []
+        for match in matches:
+            # Determine the other user ID
+            other_user_id = match.user2_id if match.user1_id == user.id else match.user1_id
+            other_user = Task.query.get(other_user_id)
+            other_user_data = UserData.query.filter_by(user_auth_id=other_user_id).first()
+            
+            if not other_user or not other_user_data:
+                continue
+                
+            # Get user preferences
+            user_pref = UserPreference.query.filter_by(
+                user_id=user.id, preferred_user_id=other_user_id
+            ).first()
+            
+            other_pref = UserPreference.query.filter_by(
+                user_id=other_user_id, preferred_user_id=user.id
+            ).first()
+            
+            # Determine match status from user's perspective
+            if match.status == 'active':
+                # Both liked each other
+                display_status = 'matched'
+                show_message_button = True
+            else:  # status is 'pending'
+                if user_pref and user_pref.preference == 'save_later':
+                    display_status = 'decide'  # User needs to decide
+                    show_message_button = False
+                elif other_pref and other_pref.preference == 'save_later':
+                    display_status = 'pending'  # Waiting for other user
+                    show_message_button = False
+                else:
+                    display_status = 'pending'  # Generic pending
+                    show_message_button = False
+            
+            # Get profile image
+            user_image = UserImages.query.filter_by(user_auth_id=other_user_id).first()
+            image_url = None
+            if user_image and user_image.imageString:
+                image_url = request.host_url + 'uploads/' + user_image.imageString
+            
+            # Add match to result
+            result.append({
+                'match_id': match.id,
+                'user_id': other_user_id,
+                'name': other_user_data.name,
+                'email': other_user.email,
+                'age': other_user_data.age,
+                'bio': other_user_data.bio,
+                'status': display_status,
+                'show_message_button': show_message_button,
+                'match_date': match.match_date,
+                'image_url': image_url
+            })
+        
+        return jsonify({'matches': result}), 200
+        
+    except Exception as e:
+        print(f"Error in get_user_matches: {str(e)}")
+        return jsonify({'error': 'Internal Server Error'}), 500
+
+
+@app.route('/update_match_status', methods=['POST'])
+def update_match_status():
+    try:
+        data = request.get_json()
+        match_id = data.get('match_id')
+        user_email = data.get('user_email')
+        decision = data.get('decision')  # 'accept' or 'reject'
+        
+        # Validate inputs
+        if not match_id or not user_email or not decision:
+            return jsonify({'error': 'Missing required fields'}), 400
+            
+        if decision not in ['accept', 'reject']:
+            return jsonify({'error': 'Invalid decision'}), 400
+        
+        # Get user
+        user = Task.query.filter_by(email=user_email).first()
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # Get match
+        match = Match.query.get(match_id)
+        if not match:
+            return jsonify({'error': 'Match not found'}), 404
+            
+        # Verify user is part of this match
+        if match.user1_id != user.id and match.user2_id != user.id:
+            return jsonify({'error': 'User not authorized to update this match'}), 403
+            
+        # Determine other user ID
+        other_user_id = match.user2_id if match.user1_id == user.id else match.user1_id
+        
+        # Update user preference based on decision
+        if decision == 'accept':
+            pref = UserPreference.query.filter_by(
+                user_id=user.id, preferred_user_id=other_user_id
+            ).first()
+            
+            if pref:
+                pref.preference = 'like'
+            else:
+                new_pref = UserPreference(
+                    user_id=user.id,
+                    preferred_user_id=other_user_id,
+                    preference='like'
+                )
+                db.session.add(new_pref)
+                
+            # Check if this creates a match
+            process_potential_match(user.id, other_user_id)
+            
+        else:  # decision == 'reject'
+            pref = UserPreference.query.filter_by(
+                user_id=user.id, preferred_user_id=other_user_id
+            ).first()
+            
+            if pref:
+                pref.preference = 'reject'
+            else:
+                new_pref = UserPreference(
+                    user_id=user.id,
+                    preferred_user_id=other_user_id,
+                    preference='reject'
+                )
+                db.session.add(new_pref)
+            
+            # Mark match as deleted
+            match.status = 'deleted'
+        
+        db.session.commit()
+        
+        return jsonify({'message': f'Match {decision}ed successfully'}), 200
+        
+    except Exception as e:
+        print(f"Error in update_match_status: {str(e)}")
+        return jsonify({'error': 'Internal Server Error'}), 500
+
+"""
+    END
+"""
     
 
 def get_match_score(user1_data, user2_data):
@@ -544,7 +858,6 @@ def sign_in():
     except Exception as e:
         return jsonify({'error': 'Internal Server Error'}), 500
 
-
 # Getting Sign-in DATA
 @app.route('/sign-in', methods=['GET'])
 def get_signin_data():
@@ -558,7 +871,6 @@ def get_signin_data():
         for rel in signin
     ]
     return jsonify(data)
-
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
@@ -668,8 +980,6 @@ def get_chats():
 
     return jsonify(chat_history)
 
-
-    
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
