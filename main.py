@@ -545,6 +545,20 @@ def sign_in():
         return jsonify({'error': 'Internal Server Error'}), 500
 
 
+# Getting Sign-in DATA
+@app.route('/sign-in', methods=['GET'])
+def get_signin_data():
+    signin = Task.query.all()
+    data = [
+        {
+            'id': rel.id,
+            'email': rel.email,
+            'password': rel.password,
+        }
+        for rel in signin
+    ]
+    return jsonify(data)
+
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
@@ -653,12 +667,6 @@ def get_chats():
     ]
 
     return jsonify(chat_history)
-
-
-    
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
 
 
     
