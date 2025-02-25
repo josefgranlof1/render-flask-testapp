@@ -171,61 +171,6 @@ def set_preference():
         return jsonify({'error': 'Internal Server Error'}), 500
 
 
-def process_potential_match(user1_id, user2_id):
-    """Process potential match between two users based on their preferences"""
-    # Get preferences in both directions
-    pref1 = UserPreference.query.filter_by(user_id=user1_id, preferred_user_id=user2_id).first()
-    pref2 = UserPreference.query.filter_by(user_id=user2_id, preferred_user_id=user1_id).first()
-    
-    # If either preference doesn't exist yet, no match to process
-    if not pref1 or not pref2:
-        return
-    
-    # Check if there's an existing match
-    existing_match = Match.query.filter(
-        or_(
-            and_(Match.user1_id == user1_id, Match.user2_id == user2_id),
-            and_(Match.user1_id == user2_id, Match.user2_id == user1_id)
-        )
-    ).first()
-    
-    # Case I: Both users like each other
-    if pref1.preference == 'like' and pref2.preference == 'like':
-        if existing_match:
-            # Update match status
-            existing_match.status = 'active'
-            existing_match.visible_after = datetime.utcnow() + timedelta(minutes=20)
-        else:
-            # Create new match with 20 minute delay
-            new_match = Match(
-                user1_id=user1_id,
-                user2_id=user2_id,
-                visible_after=datetime.utcnow() + timedelta(minutes=20),
-                status='active'
-            )
-            db.session.add(new_match)
-    
-    # Case II: One or both users rejected
-    elif pref1.preference == 'reject' or pref2.preference == 'reject':
-        if existing_match:
-            # Mark match as deleted
-            existing_match.status = 'deleted'
-    
-    # Case III & IV: Save for later scenarios
-    elif pref1.preference == 'save_later' or pref2.preference == 'save_later':
-        # Only proceed if neither preference is 'reject'
-        if pref1.preference != 'reject' and pref2.preference != 'reject':
-            if not existing_match:
-                # Create pending match
-                new_match = Match(
-                    user1_id=user1_id,
-                    user2_id=user2_id,
-                    status='pending',
-                    visible_after=datetime.utcnow()  # Visible immediately, but pending
-                )
-                db.session.add(new_match)
-
-
 @app.route('/matches/<email>', methods=['GET'])
 def get_user_matches(email):
     try:
@@ -387,7 +332,61 @@ def update_match_status():
 """
     END
 """
+
+def process_potential_match(user1_id, user2_id):
+    """Process potential match between two users based on their preferences"""
+    # Get preferences in both directions
+    pref1 = UserPreference.query.filter_by(user_id=user1_id, preferred_user_id=user2_id).first()
+    pref2 = UserPreference.query.filter_by(user_id=user2_id, preferred_user_id=user1_id).first()
     
+    # If either preference doesn't exist yet, no match to process
+    if not pref1 or not pref2:
+        return
+    
+    # Check if there's an existing match
+    existing_match = Match.query.filter(
+        or_(
+            and_(Match.user1_id == user1_id, Match.user2_id == user2_id),
+            and_(Match.user1_id == user2_id, Match.user2_id == user1_id)
+        )
+    ).first()
+    
+    # Case I: Both users like each other
+    if pref1.preference == 'like' and pref2.preference == 'like':
+        if existing_match:
+            # Update match status
+            existing_match.status = 'active'
+            existing_match.visible_after = datetime.utcnow() + timedelta(minutes=20)
+        else:
+            # Create new match with 20 minute delay
+            new_match = Match(
+                user1_id=user1_id,
+                user2_id=user2_id,
+                visible_after=datetime.utcnow() + timedelta(minutes=20),
+                status='active'
+            )
+            db.session.add(new_match)
+    
+    # Case II: One or both users rejected
+    elif pref1.preference == 'reject' or pref2.preference == 'reject':
+        if existing_match:
+            # Mark match as deleted
+            existing_match.status = 'deleted'
+    
+    # Case III & IV: Save for later scenarios
+    elif pref1.preference == 'save_later' or pref2.preference == 'save_later':
+        # Only proceed if neither preference is 'reject'
+        if pref1.preference != 'reject' and pref2.preference != 'reject':
+            if not existing_match:
+                # Create pending match
+                new_match = Match(
+                    user1_id=user1_id,
+                    user2_id=user2_id,
+                    status='pending',
+                    visible_after=datetime.utcnow()  # Visible immediately, but pending
+                )
+                db.session.add(new_match)
+
 
 def get_match_score(user1_data, user2_data):
     """Calculate a simple match score between two users based on age and hobbies"""
