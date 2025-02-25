@@ -124,108 +124,54 @@ with app.app_context():
 
 # API Endpoints
 
-# @app.route('/preference', methods=['POST'])
-# def set_preference():
-#     try:
-#         data = request.get_json()
-#         user_email = data.get('user_email')
-#         preferred_user_email = data.get('preferred_user_email')
-#         preference = data.get('preference')  # 'like', 'reject', 'save_later'
-        
-#         # Validate inputs
-#         if not user_email or not preferred_user_email or not preference:
-#             return jsonify({'error': 'Missing required fields'}), 400
-            
-#         if preference not in ['like', 'reject', 'save_later']:
-#             return jsonify({'error': 'Invalid preference type'}), 400
-            
-#         # Get user IDs from emails
-#         user = Task.query.filter_by(email=user_email).first()
-#         preferred_user = Task.query.filter_by(email=preferred_user_email).first()
-        
-#         if not user or not preferred_user:
-#             return jsonify({'error': 'One or both users not found'}), 404
-            
-#         # Check if preference already exists
-#         existing_preference = UserPreference.query.filter_by(
-#             user_id=user.id, 
-#             preferred_user_id=preferred_user.id
-#         ).first()
-        
-#         if existing_preference:
-#             # Update existing preference
-#             existing_preference.preference = preference
-#             existing_preference.timestamp = datetime.utcnow()
-#         else:
-#             # Create new preference
-#             new_preference = UserPreference(
-#                 user_id=user.id,
-#                 preferred_user_id=preferred_user.id,
-#                 preference=preference
-#             )
-#             db.session.add(new_preference)
-        
-#         # Check if this creates a match
-#         process_potential_match(user.id, preferred_user.id)
-        
-#         db.session.commit()
-        
-#         return jsonify({'message': f'Preference set to {preference}'}), 201
-        
-#     except Exception as e:
-#         print(f"Error in set_preference: {str(e)}")
-#         return jsonify({'error': 'Internal Server Error'}), 500
-
 @app.route('/preference', methods=['POST'])
 def set_preference():
     try:
-        if not request.is_json:  # Check if request has JSON
-            return jsonify({'error': 'Request must be JSON'}), 415
-
         data = request.get_json()
-        if data is None:
-            return jsonify({'error': 'Invalid JSON'}), 400
-
-        # Extract data
         user_email = data.get('user_email')
         preferred_user_email = data.get('preferred_user_email')
-        preference = data.get('preference')
-
+        preference = data.get('preference')  # 'like', 'reject', 'save_later'
+        
         # Validate inputs
         if not user_email or not preferred_user_email or not preference:
             return jsonify({'error': 'Missing required fields'}), 400
-
+            
         if preference not in ['like', 'reject', 'save_later']:
             return jsonify({'error': 'Invalid preference type'}), 400
-
+            
         # Get user IDs from emails
         user = Task.query.filter_by(email=user_email).first()
         preferred_user = Task.query.filter_by(email=preferred_user_email).first()
-
+        
         if not user or not preferred_user:
             return jsonify({'error': 'One or both users not found'}), 404
-
+            
         # Check if preference already exists
         existing_preference = UserPreference.query.filter_by(
-            user_id=user.id, preferred_user_id=preferred_user.id
+            user_id=user.id, 
+            preferred_user_id=preferred_user.id
         ).first()
-
+        
         if existing_preference:
+            # Update existing preference
             existing_preference.preference = preference
             existing_preference.timestamp = datetime.utcnow()
         else:
+            # Create new preference
             new_preference = UserPreference(
                 user_id=user.id,
                 preferred_user_id=preferred_user.id,
                 preference=preference
             )
             db.session.add(new_preference)
-
-        # Commit changes
+        
+        # Check if this creates a match
+        process_potential_match(user.id, preferred_user.id)
+        
         db.session.commit()
-
+        
         return jsonify({'message': f'Preference set to {preference}'}), 201
-
+        
     except Exception as e:
         print(f"Error in set_preference: {str(e)}")
         return jsonify({'error': 'Internal Server Error'}), 500
