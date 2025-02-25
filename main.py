@@ -79,17 +79,7 @@ class UserImages(db.Model):
     email = db.Column(db.String(200))  # Ensure this column exists
     imageString = db.Column(db.String())
     user = db.relationship('Task', backref=db.backref('user_image', lazy=True))
-
-with app.app_context():
-    db.create_all()
     
-"""
-    BEGIN: 
-    - Add the model definitions (UserPreference and Match classes) near your other model definitions, before the with app.app_context() block where you create the tables.
-    - Add the new API endpoints (/preference, /matches/<email>, and /update_match_status) alongside your other route handlers.
-    - Add the helper function process_potential_match() outside of any route handler, making it a standalone function.
-"""
-
 class UserPreference(db.Model):
     __tablename__ = 'user_preference'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -116,11 +106,15 @@ class Match(db.Model):
     user1 = db.relationship('Task', foreign_keys=[user1_id], backref=db.backref('matches_as_user1', lazy=True))
     user2 = db.relationship('Task', foreign_keys=[user2_id], backref=db.backref('matches_as_user2', lazy=True))
 
-
-# Create the tables
 with app.app_context():
     db.create_all()
-
+    
+"""
+    BEGIN: 
+    - Add the model definitions (UserPreference and Match classes) near your other model definitions, before the with app.app_context() block where you create the tables.
+    - Add the new API endpoints (/preference, /matches/<email>, and /update_match_status) alongside your other route handlers.
+    - Add the helper function process_potential_match() outside of any route handler, making it a standalone function.
+"""
 
 # API Endpoints
 
