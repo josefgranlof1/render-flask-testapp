@@ -463,19 +463,42 @@ def match_all_users():
         if not males or not females:
             return matches
         
+        # Get all existing matches and preferences
+        existing_matches = Match.query.all()
+        existing_preferences = UserPreference.query.all()
+        
+        # Create sets of user pairs who already have matches or preferences
+        matched_pairs = set()
+        for match in existing_matches:
+            matched_pairs.add((match.user1_id, match.user2_id))
+            matched_pairs.add((match.user2_id, match.user1_id)) # Add reverse pair too
+        
+        preference_pairs = set()
+        for pref in existing_preferences:
+            preference_pairs.add((pref.user_id, pref.preferred_user_id))
+         
+                
         # Create a pool of available users
         available_males = males.copy()
         available_females = females.copy()
         
-        # Match each user with their best available match
+        # Match each user with their best available match, excluding existing matches
         while available_males and available_females:
             male = available_males[0]
+    
             
             # Find best female match for current male
             best_score = -1
             best_match = None
-            
+    
+                    
             for female in available_females:
+# Skip if they already have a match or preference
+                if ((male.user_auth_id, female.user_auth_id) in matched_pairs or
+                    (male.user_auth_id, female.user_auth_id) in preference_pairs or
+                    (female.user_auth_id, male.user_auth_id) in preference_pairs):
+                    continue
+                
                 score = get_match_score(male, female)
                 if score > best_score:
                     best_score = score
