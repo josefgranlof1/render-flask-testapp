@@ -420,28 +420,69 @@ def get_user_matches(user_id, limit=5):
             print(f"No user found for ID: {user_id}")
             return []
             
-        # Get users of opposite gender
-        target_gender = 'Woman' if user.gender == 'Men' else 'Men'
-        all_matches = UserData.query.filter(
-            UserData.gender == target_gender,
-            UserData.user_auth_id != user_id
+        # Normalize gender values for consistent comparison
+        user_gender = user.gender.lower() if user.gender else None
+        
+        # Get users of opposite gender, handling different gender formats
+        if user_gender == 'men' or user_gender == 'man':
+            target_gender = ['Woman', 'woman', 'Women', 'women', 'Female', 'female']
+        elif user_gender == 'woman' or user_gender == 'women':
+            target_gender = ['Men', 'men', 'Man', 'man', 'Male', 'male']
+        else:
+            # If gender is something else or not specified, get any user
+            target_gender = ['Men', 'men', 'Man', 'man', 'Male', 'male', 'Woman', 'woman', 'Women', 'women', 'Female', 'female']
+        
+        # Get existing matches and preferences to avoid duplicates
+        existing_matches = Match.query.filter(
+            or_(Match.user1_id == user_id, Match.user2_id == user_id),
+            Match.status != 'deleted'
         ).all()
         
-        # If no matches found in opposite gender, get any available user of opposite gender
-        if not all_matches and user.gender == 'Woman':
-            all_matches = UserData.query.filter(
-                UserData.gender == 'Men'
-            ).all()
+        existing_preferences = UserPreference.query.filter_by(user_id=user_id).all()
         
-        # Format results
+        # Create sets of already matched/preferred user IDs
+        matched_users = set()
+        for match in existing_matches:
+            if match.user1_id == user_id:
+                matched_users.add(match.user2_id)
+            else:
+                matched_users.add(match.user1_id)
+                
+        preferred_users = set([pref.preferred_user_id for pref in existing_preferences])
+        
+        # Find potential matches (users of opposite gender not already matched/preferred)
+        potential_matches = UserData.query.filter(
+            UserData.gender.in_(target_gender),
+            UserData.user_auth_id != user_id,
+            ~UserData.user_auth_id.in_(matched_users.union(preferred_users))
+        ).all()
+        
+        # Calculate match scores and sort
+        scored_matches = []
+        for potential_match in potential_matches:
+            score = get_match_score(user, potential_match)
+            scored_matches.append((potential_match, score))
+        
+        # Sort by score (highest first)
+        scored_matches.sort(key=lambda x: x[1], reverse=True)
+        
+        # Format results with top matches
         result = []
-        for match in all_matches[:limit]:  # Take only up to limit matches
+        for match, score in scored_matches[:limit]:
+            # Get user image if available
+            user_image = UserImages.query.filter_by(user_auth_id=match.user_auth_id).first()
+            image_url = None
+            if user_image and user_image.imageString:
+                image_url = f"/uploads/{user_image.imageString}"
+                
             result.append({
                 'user_id': match.user_auth_id,
                 'name': match.name,
                 'age': match.age,
                 'bio': match.bio,
-                'hobbies': match.hobbies
+                'hobbies': match.hobbies,
+                'match_score': score,
+                'image_url': image_url
             })
             
         return result
@@ -452,16 +493,11 @@ def get_user_matches(user_id, limit=5):
 def match_all_users():
     """Match all users with someone from opposite gender"""
     try:
-        # Get all users grouped by gender
-        males = UserData.query.filter(UserData.gender.ilike('Men')).all()
-        females = UserData.query.filter(UserData.gender.ilike('Woman')).all()
+        # Get all users with complete profiles
+        all_users = UserData.query.all()
         
         # Initialize results dictionary
         matches = {}
-        
-        # If either gender group is empty, return empty matches
-        if not males or not females:
-            return matches
         
         # Get all existing matches and preferences
         existing_matches = Match.query.all()
@@ -471,78 +507,92 @@ def match_all_users():
         matched_pairs = set()
         for match in existing_matches:
             matched_pairs.add((match.user1_id, match.user2_id))
-            matched_pairs.add((match.user2_id, match.user1_id)) # Add reverse pair too
+            matched_pairs.add((match.user2_id, match.user1_id))  # Add reverse pair too
         
         preference_pairs = set()
         for pref in existing_preferences:
             preference_pairs.add((pref.user_id, pref.preferred_user_id))
-         
-                
-        # Create a pool of available users
-        available_males = males.copy()
-        available_females = females.copy()
         
-        # Match each user with their best available match, excluding existing matches
-        while available_males and available_females:
-            male = available_males[0]
-    
+        # Group users by gender
+        gender_groups = {}
+        for user in all_users:
+            gender = user.gender.lower() if user.gender else "unknown"
+            if gender not in gender_groups:
+                gender_groups[gender] = []
+            gender_groups[gender].append(user)
+        
+        # Map genders to opposite genders
+        opposite_genders = {
+            "men": "women",
+            "man": "women",
+            "male": "women",
+            "women": "men",
+            "woman": "men",
+            "female": "men"
+        }
+        
+        # Process each user
+        for user in all_users:
+            # Skip if user already has matches in the result
+            if user.user_auth_id in matches:
+                continue
+                
+            user_gender = user.gender.lower() if user.gender else "unknown"
             
-            # Find best female match for current male
+            # Determine opposite gender
+            opposite_gender = opposite_genders.get(user_gender)
+            
+            # If we can't determine opposite gender, skip
+            if not opposite_gender or opposite_gender not in gender_groups:
+                continue
+                
+            # Find best match among opposite gender
             best_score = -1
             best_match = None
-    
-                    
-            for female in available_females:
-# Skip if they already have a match or preference
-                if ((male.user_auth_id, female.user_auth_id) in matched_pairs or
-                    (male.user_auth_id, female.user_auth_id) in preference_pairs or
-                    (female.user_auth_id, male.user_auth_id) in preference_pairs):
+            
+            for potential_match in gender_groups.get(opposite_gender, []):
+                # Skip if they already have a match or preference
+                if ((user.user_auth_id, potential_match.user_auth_id) in matched_pairs or
+                    (user.user_auth_id, potential_match.user_auth_id) in preference_pairs or
+                    (potential_match.user_auth_id, user.user_auth_id) in preference_pairs or
+                    potential_match.user_auth_id in matches):  # Skip if already matched in this run
                     continue
                 
-                score = get_match_score(male, female)
-                if score > best_score:
-                    best_score = score
-                    best_match = female
-            
-            # Create the match
-            if best_match:
-                matches[male.user_auth_id] = {
-                    'match_id': best_match.user_auth_id,
-                    'name': best_match.name,
-                    'age': best_match.age,
-                    'score': best_score
-                }
-                matches[best_match.user_auth_id] = {
-                    'match_id': male.user_auth_id,
-                    'name': male.name,
-                    'age': male.age,
-                    'score': best_score
-                }
-                available_males.remove(male)
-                available_females.remove(best_match)
-        
-        # Handle remaining users (if any gender has more users)
-        # Match them with the highest scoring already-matched user
-        remaining = available_males if available_males else available_females
-        opposite_list = females if available_males else males
-        
-        for user in remaining:
-            best_score = -1
-            best_match = None
-            
-            for potential_match in opposite_list:
                 score = get_match_score(user, potential_match)
                 if score > best_score:
                     best_score = score
                     best_match = potential_match
             
+            # Create the match
             if best_match:
+                # Get profile images if available
+                user_image = UserImages.query.filter_by(user_auth_id=user.user_auth_id).first()
+                match_image = UserImages.query.filter_by(user_auth_id=best_match.user_auth_id).first()
+                
+                user_image_url = f"/uploads/{user_image.imageString}" if user_image and user_image.imageString else None
+                match_image_url = f"/uploads/{match_image.imageString}" if match_image and match_image.imageString else None
+                
+                # Add match for current user
                 matches[user.user_auth_id] = {
                     'match_id': best_match.user_auth_id,
                     'name': best_match.name,
                     'age': best_match.age,
-                    'score': best_score
+                    'score': best_score,
+                    'image_url': match_image_url
                 }
+                
+                # Add match for the matched user
+                matches[best_match.user_auth_id] = {
+                    'match_id': user.user_auth_id,
+                    'name': user.name,
+                    'age': user.age,
+                    'score': best_score,
+                    'image_url': user_image_url
+                }
+                
+                # Mark this pair as matched to avoid duplicates
+                matched_pairs.add((user.user_auth_id, best_match.user_auth_id))
+                matched_pairs.add((best_match.user_auth_id, user.user_auth_id))
         
         return matches
     
