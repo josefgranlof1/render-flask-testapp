@@ -84,10 +84,12 @@ class UserImages(db.Model):
 class LocationData(db.Model):
     __tablename__ = 'locationData'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    locationName = db.Column(db.String(200))
     locationNumber = db.Column(db.String(200))
+    locationName = db.Column(db.String(200))
     lat = db.Column(db.Float)
-    lng = db.Column(db.Float) 
+    lng = db.Column(db.Float)
+    maxParticipants = db.Column(db.String(200))
+
     
 class UserPreference(db.Model):
     __tablename__ = 'user_preference'
@@ -920,6 +922,8 @@ def getLocationData():
             'locationNumber': loc.locationNumber,
             'lat': loc.lat,
             'lng': loc.lng,
+            'maxParticipants': loc.maxParticipants,
+
 
         }
         for loc in locations
