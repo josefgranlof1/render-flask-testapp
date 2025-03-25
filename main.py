@@ -85,7 +85,8 @@ class LocationData(db.Model):
     __tablename__ = 'locationData'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     locationName = db.Column(db.String(200))
-    lat = db.Column(db.Float)  
+    locationNumber = db.Column(db.Integer)
+    lat = db.Column(db.Float)
     lng = db.Column(db.Float) 
     
 class UserPreference(db.Model):
@@ -916,6 +917,7 @@ def getLocationData():
         {
             'id': loc.id,
             'locationName': loc.locationName,
+            'locationNumber': loc.locationNumber,
             'lat': loc.lat,
             'lng': loc.lng,
 
