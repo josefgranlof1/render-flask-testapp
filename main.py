@@ -914,7 +914,7 @@ def get_relationship_data():
 def getLocationData():
     locations = LocationData.query.all()
     data = [
-        {
+        { 
             'id': loc.id,
             'locationName': loc.locationName,
             'locationNumber': loc.locationNumber,
