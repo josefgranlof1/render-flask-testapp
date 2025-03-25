@@ -85,12 +85,8 @@ class LocationData(db.Model):
     __tablename__ = 'locationData'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     locationName = db.Column(db.String(200))
-    locationNumber = db.Column(db.Integer)
-    lat = db.Column(db.Float)
-    lng = db.Column(db.Float)
-    maxParticipants = db.Column(db.Integer)
-    isFull = db.Column(db.Boolean, default=False)
-    hasUserArrived = db.Column(db.Boolean, nullable=True)
+    lat = db.Column(db.Float)  
+    lng = db.Column(db.Float) 
     
 class UserPreference(db.Model):
     __tablename__ = 'user_preference'
@@ -920,18 +916,13 @@ def getLocationData():
         {
             'id': loc.id,
             'locationName': loc.locationName,
-            'locationNumber': loc.locationNumber,
-            'maxParticipants': loc.maxParticipants,
             'lat': loc.lat,
             'lng': loc.lng,
-            'isFull': loc.isFull,
-            'hasUserArrived': loc.hasUserArrived,
 
         }
         for loc in locations
     ]
     return jsonify(data)
-
 
 # USER SIGNIN METHOD
 @app.route('/sign-in', methods=['POST'])
