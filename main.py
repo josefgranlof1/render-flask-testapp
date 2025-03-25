@@ -90,7 +90,7 @@ class LocationData(db.Model):
     lng = db.Column(db.Float)
     maxParticipants = db.Column(db.Integer)
     isFull = db.Column(db.Boolean, default=False)
-    hasUserArrived = db.Column(db.Boolean, nullable=True)
+    hasUserArrived = db.Column(db.Boolean, default=False)
     
 class UserPreference(db.Model):
     __tablename__ = 'user_preference'
