@@ -81,6 +81,7 @@ class UserImages(db.Model):
     user = db.relationship('Task', backref=db.backref('user_image', lazy=True))
     
     
+
 class LocationData(db.Model):
     __tablename__ = 'locationData'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -92,6 +93,7 @@ class LocationData(db.Model):
     isFull = db.Column(db.Boolean, default=False)
     hasUserArrived = db.Column(db.Boolean, default=False)
     
+
 class UserPreference(db.Model):
     __tablename__ = 'user_preference'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -670,7 +672,6 @@ def postData():
         return jsonify({'error': 'Internal Server Error'}), 500
 
 
-
 # POSTING USER DATA TO DATABASE
 @app.route('/userData', methods=['POST'])
 def postUserData():
@@ -918,7 +919,7 @@ def get_relationship_data():
 def getLocationData():
     locations = LocationData.query.all()
     data = [
-        { 
+        {
             'id': loc.id,
             'locationName': loc.locationName,
             'locationNumber': loc.locationNumber,
@@ -928,11 +929,11 @@ def getLocationData():
             'isFull': loc.isFull,
             'hasUserArrived': loc.hasUserArrived,
 
+
         }
         for loc in locations
     ]
     return jsonify(data)
-
 
 # USER SIGNIN METHOD
 @app.route('/sign-in', methods=['POST'])
