@@ -341,6 +341,15 @@ def update_match_status():
         print(f"Error in update_match_status: {str(e)}")
         return jsonify({'error': 'Internal Server Error'}), 500
 
+
+# GET endpoint to fetch match status
+@app.route('/get_match_status', methods=['GET'])
+def get_match_status():
+    match_id = request.args.get('match_id', type=int)  # Get match_id from query params
+    if match_id and match_id in update_match_status:
+        return jsonify(update_match_status[match_id])
+    return jsonify(update_match_status)  # Return all matches if no match_id is provided
+
 """
     END
 """
