@@ -80,6 +80,20 @@ class UserImages(db.Model):
     imageString = db.Column(db.String())
     user = db.relationship('Task', backref=db.backref('user_image', lazy=True))
     
+    
+
+class LocationData(db.Model):
+    __tablename__ = 'locationData'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    locationNumber = db.Column(db.String(200))
+    locationName = db.Column(db.String(200))
+    lat = db.Column(db.Float)
+    lng = db.Column(db.Float)
+    maxParticipants = db.Column(db.Integer)
+    isFull = db.Column(db.Boolean, default=False)
+    hasUserArrived = db.Column(db.Boolean, default=False)
+    
+
 class UserPreference(db.Model):
     __tablename__ = 'user_preference'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -125,7 +139,7 @@ def set_preference():
         user_email = data.get('user_email')
         preferred_user_email = data.get('preferred_user_email')
         preference = data.get('preference')  # 'like', 'reject', 'save_later'
-
+        
         # Validate inputs
         if not user_email or not preferred_user_email or not preference:
             return jsonify({'error': 'Missing required fields'}), 400
@@ -169,6 +183,7 @@ def set_preference():
     except Exception as e:
         print(f"Error in set_preference: {str(e)}")
         return jsonify({'error': 'Internal Server Error'}), 500
+
 
 @app.route('/matches/<email>', methods=['GET'])
 def get_user_matches(email):
@@ -411,59 +426,6 @@ def get_match_score(user1_data, user2_data):
     
     return score
 
-
-def get_match_status(user_id, other_user_id):
-    try:
-
-        # Get user preferences
-        user_pref = UserPreference.query.filter_by(
-            user_id=user_id, preferred_user_id=other_user_id
-        ).first()
-
-        other_pref = UserPreference.query.filter_by(
-            user_id=other_user_id, preferred_user_id=user_id
-        ).first()
-
-        current_time = datetime.utcnow()
-
-        matches = Match.query.filter(
-            or_(
-                Match.user1_id == user_id,
-                Match.user2_id == user_id
-            ),
-            Match.status != 'deleted',
-            Match.visible_after <= current_time
-        ).all()
-        for match in matches:
-            # Determine the other user ID
-            matched_user_id = match.user2_id if match.user1_id == user_id else match.user1_id
-
-            # Checks if the required match is found else continue
-            if matched_user_id != other_user_id:
-                continue
-
-            # Determine match status from user's perspective
-            if match.status == 'active':
-                # Both liked each other
-                display_status = 'matched'
-                show_message_button = True
-            else:  # status is 'pending'
-                if user_pref and user_pref.preference == 'save_later':
-                    display_status = 'decide'  # User needs to decide
-                    show_message_button = False
-                elif other_pref and other_pref.preference == 'save_later':
-                    display_status = 'pending'  # Waiting for other user
-                    show_message_button = False
-                else:
-                    display_status = 'pending'  # Generic pending
-                    show_message_button = False
-            return [display_status, show_message_button]
-        return ""
-    except Exception as e:
-        print(f"Error in get_status: {str(e)}")
-        return ""
-
-
 def get_user_matches(user_id, limit=5):
     """Get top matches for a user"""
     try:
@@ -507,7 +469,7 @@ def get_user_matches(user_id, limit=5):
         potential_matches = UserData.query.filter(
             UserData.gender.in_(target_gender),
             UserData.user_auth_id != user_id,
-            UserData.user_auth_id.in_(matched_users.union(preferred_users))
+            ~UserData.user_auth_id.in_(matched_users.union(preferred_users))
         ).all()
         
         # Calculate match scores and sort
@@ -527,23 +489,17 @@ def get_user_matches(user_id, limit=5):
             image_url = None
             if user_image and user_image.imageString:
                 image_url = f"/uploads/{user_image.imageString}"
-
-            # Get match status
-            match_status = get_match_status(user_id, match.user_auth_id)
-
+                
             result.append({
                 'user_id': match.user_auth_id,
-                'email': match.email,
                 'name': match.name,
                 'age': match.age,
                 'bio': match.bio,
                 'hobbies': match.hobbies,
                 'match_score': score,
-                'status': "" if match_status == "" else match_status[0],
-                'show_message_button': "" if match_status == "" else match_status[1],
                 'image_url': image_url
             })
-
+            
         return result
     except Exception as e:
         print(f"Error in get_user_matches: {str(e)}")
@@ -958,6 +914,26 @@ def get_relationship_data():
     ]
     return jsonify(data)
 
+
+@app.route('/locationData', methods=['GET'])
+def getLocationData():
+    locations = LocationData.query.all()
+    data = [
+        {
+            'id': loc.id,
+            'locationName': loc.locationName,
+            'locationNumber': loc.locationNumber,
+            'lat': loc.lat,
+            'lng': loc.lng,
+            'maxParticipants': loc.maxParticipants,
+            'isFull': loc.isFull,
+            'hasUserArrived': loc.hasUserArrived,
+
+
+        }
+        for loc in locations
+    ]
+    return jsonify(data)
 
 # USER SIGNIN METHOD
 @app.route('/sign-in', methods=['POST'])
