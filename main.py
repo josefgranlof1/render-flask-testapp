@@ -80,6 +80,17 @@ class UserImages(db.Model):
     imageString = db.Column(db.String())
     user = db.relationship('Task', backref=db.backref('user_image', lazy=True))
     
+class LocationData(db.Model):
+    __tablename__ = 'locationData'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    locationNumber = db.Column(db.String(200))
+    locationName = db.Column(db.String(200))
+    lat = db.Column(db.Float)
+    lng = db.Column(db.Float)
+    maxParticipants = db.Column(db.Integer)
+    isFull = db.Column(db.Boolean, default=False)
+    hasUserArrived = db.Column(db.Boolean, default=False)
+
 class UserPreference(db.Model):
     __tablename__ = 'user_preference'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -958,6 +969,26 @@ def get_relationship_data():
     ]
     return jsonify(data)
 
+
+@app.route('/locationData', methods=['GET'])
+def getLocationData():
+    locations = LocationData.query.all()
+    data = [
+        {
+            'id': loc.id,
+            'locationName': loc.locationName,
+            'locationNumber': loc.locationNumber,
+            'lat': loc.lat,
+            'lng': loc.lng,
+            'maxParticipants': loc.maxParticipants,
+            'isFull': loc.isFull,
+            'hasUserArrived': loc.hasUserArrived,
+
+
+        }
+        for loc in locations
+    ]
+    return jsonify(data)
 
 # USER SIGNIN METHOD
 @app.route('/sign-in', methods=['POST'])
