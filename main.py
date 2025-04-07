@@ -499,7 +499,8 @@ def get_user_matches(user_id, limit=5):
         # Get existing matches and preferences to avoid duplicates
         existing_matches = Match.query.filter(
             or_(Match.user1_id == user_id, Match.user2_id == user_id),
-            Match.status != 'deleted'
+            and_(Match.status != 'deleted', Match.status != 'matched')
+            # Match.status != 'deleted'
         ).all()
         
         existing_preferences = UserPreference.query.filter_by(user_id=user_id).all()
