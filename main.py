@@ -90,7 +90,7 @@ class LocationData(db.Model):
     maxParticipants = db.Column(db.Integer)
     isFull = db.Column(db.Boolean, default=False)
     hasUserArrived = db.Column(db.Boolean, default=False)
-
+    
 class UserPreference(db.Model):
     __tablename__ = 'user_preference'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -499,7 +499,7 @@ def get_user_matches(user_id, limit=5):
         # Get existing matches and preferences to avoid duplicates
         existing_matches = Match.query.filter(
             or_(Match.user1_id == user_id, Match.user2_id == user_id),
-            and_(Match.status != 'deleted', Match.status != 'matched')
+            and_(Match.status != 'deleted', Match.status != 'active')
             # Match.status != 'deleted'
         ).all()
         
@@ -542,6 +542,11 @@ def get_user_matches(user_id, limit=5):
 
             # Get match status
             match_status = get_match_status(user_id, match.user_auth_id)
+
+            # Check if match status is empty or matched
+            # then we need to skip this user from pulsating search screen
+            if match_status == "" or match_status[0] == "matched":
+                continue
 
             result.append({
                 'user_id': match.user_auth_id,
