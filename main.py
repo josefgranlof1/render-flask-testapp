@@ -89,7 +89,8 @@ class LocationData(db.Model):
     lng = db.Column(db.Float)
     maxParticipants = db.Column(db.Integer)
     isFull = db.Column(db.Boolean, default=False)
-    hasUserArrived = db.Column(db.Boolean, default=False)
+    hasUserArrived = db.Column(db.Boolean, default=False)    
+
     
 class UserPreference(db.Model):
     __tablename__ = 'user_preference'
@@ -499,8 +500,8 @@ def get_user_matches(user_id, limit=5):
         # Get existing matches and preferences to avoid duplicates
         existing_matches = Match.query.filter(
             or_(Match.user1_id == user_id, Match.user2_id == user_id),
-            and_(Match.status != 'deleted', Match.status != 'active')
-            # Match.status != 'deleted'
+            # and_(Match.status != 'deleted', Match.status != 'active')
+            Match.status != 'deleted'
         ).all()
         
         existing_preferences = UserPreference.query.filter_by(user_id=user_id).all()
@@ -519,7 +520,7 @@ def get_user_matches(user_id, limit=5):
         potential_matches = UserData.query.filter(
             UserData.gender.in_(target_gender),
             UserData.user_auth_id != user_id,
-            UserData.user_auth_id.in_(matched_users.union(preferred_users))
+            ~UserData.user_auth_id.in_(matched_users.union(preferred_users))
         ).all()
         
         # Calculate match scores and sort
@@ -540,13 +541,6 @@ def get_user_matches(user_id, limit=5):
             if user_image and user_image.imageString:
                 image_url = f"/uploads/{user_image.imageString}"
 
-            # Get match status
-            match_status = get_match_status(user_id, match.user_auth_id)
-
-            # Check if match status is empty or matched
-            # then we need to skip this user from pulsating search screen
-            if match_status == "" or match_status[0] == "matched":
-                continue
 
             result.append({
                 'user_id': match.user_auth_id,
@@ -556,8 +550,6 @@ def get_user_matches(user_id, limit=5):
                 'bio': match.bio,
                 'hobbies': match.hobbies,
                 'match_score': score,
-                'status': "" if match_status == "" else match_status[0],
-                'show_message_button': "" if match_status == "" else match_status[1],
                 'image_url': image_url
             })
 
@@ -990,11 +982,11 @@ def getLocationData():
             'isFull': loc.isFull,
             'hasUserArrived': loc.hasUserArrived,
 
-
         }
         for loc in locations
     ]
     return jsonify(data)
+
 
 # USER SIGNIN METHOD
 @app.route('/sign-in', methods=['POST'])
