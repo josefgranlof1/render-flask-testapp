@@ -56,6 +56,7 @@ class UserData(db.Model):
     email = db.Column(db.String(200))
     gender = db.Column(db.String(50))
     hobbies = db.Column(db.ARRAY(db.String))
+    preferences = db.Column(db.ARRAY(db.String))
     phone_number = db.Column(db.String(50))
     age = db.Column(db.String(10))
     bio = db.Column(db.Text)
@@ -740,10 +741,10 @@ def postUserData():
         name = data['name']
         gender = data['gender']
         hobbies = data['hobbies']
+        preferences = data['preferences']
         phone_number = data['phone_number']
         age = data['age']
         bio = data['bio']
-      
 
         # Check if user details already exist
         userDetails = UserData.query.filter_by(user_auth_id=user_auth_id).first()
@@ -754,6 +755,7 @@ def postUserData():
             userDetails.email = newEmail
             userDetails.gender = gender
             userDetails.hobbies = hobbies
+            userDetails.preferences = preferences    
             userDetails.phone_number = phone_number
             userDetails.age = age
             userDetails.bio = bio
@@ -767,6 +769,7 @@ def postUserData():
                 email=newEmail,
                 gender=gender,
                 hobbies=hobbies,
+                preferences=preferences,            
                 phone_number=phone_number,
                 age=age,
                 bio=bio
@@ -938,6 +941,7 @@ def getUserData():
                 'email': userDetails.email,
                 'gender': userDetails.gender,
                 'hobbies': userDetails.hobbies,
+                'preferences': userDetails.preferences,
                 'phone_number': userDetails.phone_number,
                 'age': userDetails.age,
                 'bio': userDetails.bio,
