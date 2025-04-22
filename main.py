@@ -10,7 +10,7 @@ from sqlalchemy import or_, and_
 
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp1st_example_render_user:j9bFipwm1irTAi4wxEHjOKNbf47R3pDV@dpg-d01o9bbuibrs73b0p6hg-a.frankfurt-postgres.render.com/wingsdatingapp1st_example_render"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp2nd_example_render_user:zEB7NQPPzeZ8HDGmkWwJ7QdPPJ9gMeHr@dpg-d03pmkbuibrs73ah1hpg-a.frankfurt-postgres.render.com/wingsdatingapp2nd_example_render"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -52,7 +52,8 @@ class UserData(db.Model):
     __tablename__ = 'userdata'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
-    name = db.Column(db.String(255))
+    firstname = db.Column(db.String(255))
+    lastname = db.Column(db.String(255))
     email = db.Column(db.String(200))
     gender = db.Column(db.String(50))
     hobbies = db.Column(db.ARRAY(db.String))
@@ -247,7 +248,7 @@ def get_user_matches(email):
             result.append({
                 'match_id': match.id,
                 'user_id': other_user_id,
-                'name': other_user_data.name,
+                'firstname': other_user_data.firstname,
                 'email': other_user.email,
                 'age': other_user_data.age,
                 'bio': other_user_data.bio,
@@ -546,13 +547,16 @@ def get_user_matches(user_id, limit=5):
             result.append({
                 'user_id': match.user_auth_id,
                 'email': match.email,
-                'name': match.name,
+                'firstname': match.firstname,
+                'lastname': match.lastname,
+                'preferences': match.preferences,
                 'age': match.age,
                 'bio': match.bio,
                 'hobbies': match.hobbies,
                 'match_score': score,
                 'image_url': image_url
             })
+
 
         return result
     except Exception as e:
@@ -644,7 +648,7 @@ def match_all_users():
                 # Add match for current user
                 matches[user.user_auth_id] = {
                     'match_id': best_match.user_auth_id,
-                    'name': best_match.name,
+                    'firstname': best_match.firstname,
                     'age': best_match.age,
                     'score': best_score,
                     'image_url': match_image_url
@@ -653,7 +657,7 @@ def match_all_users():
                 # Add match for the matched user
                 matches[best_match.user_auth_id] = {
                     'match_id': user.user_auth_id,
-                    'name': user.name,
+                    'firstname': user.firstname,
                     'age': user.age,
                     'score': best_score,
                     'image_url': user_image_url
@@ -738,7 +742,8 @@ def postUserData():
             return jsonify({'error': "No User registered with this mail"}), 400
 
         user_auth_id = user.id
-        name = data['name']
+        firstname = data['firstname']
+        lastname = data['lastname']
         gender = data['gender']
         hobbies = data['hobbies']
         preferences = data['preferences']
@@ -751,7 +756,8 @@ def postUserData():
 
         if userDetails:
             # Update existing user details
-            userDetails.name = name
+            userDetails.firstname = firstname
+            userDetails.lastname = lastname        
             userDetails.email = newEmail
             userDetails.gender = gender
             userDetails.hobbies = hobbies
@@ -765,7 +771,8 @@ def postUserData():
             # Add new user details
             userDetails = UserData(
                 user_auth_id=user_auth_id,
-                name=name,
+                firstname=firstname,
+                lastname=lastname,
                 email=newEmail,
                 gender=gender,
                 hobbies=hobbies,
@@ -782,6 +789,7 @@ def postUserData():
 
     except Exception as e:
         return jsonify({'error': 'Internal Server Error'}), 500
+    
 
 # POSTING Relationships DATA TO DATABASE 2025
 @app.route('/relationshipData', methods=['POST'])
@@ -937,7 +945,8 @@ def getUserData():
 
             user = {
                 'id': userDetails.user_auth_id,
-                'name': userDetails.name,
+                'firstname': userDetails.firstname,
+                'lastname': userDetails.lastname,
                 'email': userDetails.email,
                 'gender': userDetails.gender,
                 'hobbies': userDetails.hobbies,
