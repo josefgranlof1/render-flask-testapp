@@ -10,7 +10,7 @@ from sqlalchemy import or_, and_
 
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp9_render_example_e4b1_user:hUsY8gcEWtSsqlY1Lebh84tGFeJwIr9v@dpg-d0sr0cidbo4c73fcbem0-a.frankfurt-postgres.render.com/wingsdatingapp9_render_example_e4b1"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp9_render_example_klo1_user:1gcWEzvkOmJP8cGUd9JbHeh3DnhF0lil@dpg-d0srj3be5dus73bi2jrg-a.frankfurt-postgres.render.com/wingsdatingapp9_render_example_klo1"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -52,10 +52,12 @@ class UserData(db.Model):
     __tablename__ = 'userdata'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
-    name = db.Column(db.String(255))
+    firstname = db.Column(db.String(255))
+    lastname = db.Column(db.String(255))
     email = db.Column(db.String(200))
     gender = db.Column(db.String(50))
     hobbies = db.Column(db.ARRAY(db.String))
+    preferences = db.Column(db.ARRAY(db.String))
     phone_number = db.Column(db.String(50))
     age = db.Column(db.String(10))
     bio = db.Column(db.Text)
@@ -80,6 +82,7 @@ class UserImages(db.Model):
     imageString = db.Column(db.String())
     user = db.relationship('Task', backref=db.backref('user_image', lazy=True))
     
+    
 class LocationData(db.Model):
     __tablename__ = 'locationData'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -91,7 +94,7 @@ class LocationData(db.Model):
     isFull = db.Column(db.Boolean, default=False)
     hasUserArrived = db.Column(db.Boolean, default=False)    
 
-    
+       
 class UserPreference(db.Model):
     __tablename__ = 'user_preference'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -103,7 +106,6 @@ class UserPreference(db.Model):
     # Relationships
     user = db.relationship('Task', foreign_keys=[user_id], backref=db.backref('preferences', lazy=True))
     preferred_user = db.relationship('Task', foreign_keys=[preferred_user_id], backref=db.backref('preferred_by', lazy=True))
-
 
 class Match(db.Model):
     __tablename__ = 'matches'
@@ -121,12 +123,6 @@ class Match(db.Model):
 with app.app_context():
     db.create_all()
     
-"""
-    BEGIN: 
-    - Add the model definitions (UserPreference and Match classes) near your other model definitions, before the with app.app_context() block where you create the tables.
-    - Add the new API endpoints (/preference, /matches/<email>, and /update_match_status) alongside your other route handlers.
-    - Add the helper function process_potential_match() outside of any route handler, making it a standalone function.
-"""
 
 # API Endpoints
 
@@ -246,7 +242,7 @@ def get_user_matches(email):
             result.append({
                 'match_id': match.id,
                 'user_id': other_user_id,
-                'name': other_user_data.name,
+                'firstname': other_user_data.firstname,
                 'email': other_user.email,
                 'age': other_user_data.age,
                 'bio': other_user_data.bio,
@@ -340,10 +336,6 @@ def update_match_status():
         print(f"Error in update_match_status: {str(e)}")
         return jsonify({'error': 'Internal Server Error'}), 500
 
-
-"""
-    END
-"""
 
 def process_potential_match(user1_id, user2_id):
     """Process potential match between two users based on their preferences"""
@@ -545,13 +537,16 @@ def get_user_matches(user_id, limit=5):
             result.append({
                 'user_id': match.user_auth_id,
                 'email': match.email,
-                'name': match.name,
+                'firstname': match.firstname,
+                'lastname': match.lastname,
+                'preferences': match.preferences,
                 'age': match.age,
                 'bio': match.bio,
                 'hobbies': match.hobbies,
                 'match_score': score,
                 'image_url': image_url
             })
+
 
         return result
     except Exception as e:
@@ -643,7 +638,7 @@ def match_all_users():
                 # Add match for current user
                 matches[user.user_auth_id] = {
                     'match_id': best_match.user_auth_id,
-                    'name': best_match.name,
+                    'firstname': best_match.firstname,
                     'age': best_match.age,
                     'score': best_score,
                     'image_url': match_image_url
@@ -652,7 +647,7 @@ def match_all_users():
                 # Add match for the matched user
                 matches[best_match.user_auth_id] = {
                     'match_id': user.user_auth_id,
-                    'name': user.name,
+                    'firstname': user.firstname,
                     'age': user.age,
                     'score': best_score,
                     'image_url': user_image_url
@@ -737,23 +732,26 @@ def postUserData():
             return jsonify({'error': "No User registered with this mail"}), 400
 
         user_auth_id = user.id
-        name = data['name']
+        firstname = data['firstname']
+        lastname = data['lastname']
         gender = data['gender']
         hobbies = data['hobbies']
+        preferences = data['preferences']
         phone_number = data['phone_number']
         age = data['age']
         bio = data['bio']
-      
 
         # Check if user details already exist
         userDetails = UserData.query.filter_by(user_auth_id=user_auth_id).first()
 
         if userDetails:
             # Update existing user details
-            userDetails.name = name
+            userDetails.firstname = firstname
+            userDetails.lastname = lastname        
             userDetails.email = newEmail
             userDetails.gender = gender
             userDetails.hobbies = hobbies
+            userDetails.preferences = preferences    
             userDetails.phone_number = phone_number
             userDetails.age = age
             userDetails.bio = bio
@@ -763,10 +761,12 @@ def postUserData():
             # Add new user details
             userDetails = UserData(
                 user_auth_id=user_auth_id,
-                name=name,
+                firstname=firstname,
+                lastname=lastname,
                 email=newEmail,
                 gender=gender,
                 hobbies=hobbies,
+                preferences=preferences,            
                 phone_number=phone_number,
                 age=age,
                 bio=bio
@@ -779,6 +779,7 @@ def postUserData():
 
     except Exception as e:
         return jsonify({'error': 'Internal Server Error'}), 500
+    
 
 # POSTING Relationships DATA TO DATABASE 2025
 @app.route('/relationshipData', methods=['POST'])
@@ -913,8 +914,6 @@ def get_image(user_auth_id):
     else:
         return jsonify({"error": "No image found for the given user_auth_id"}), 404
 
-
-    
 @app.route('/userData', methods=['GET'])
 def getUserData():
     try:
@@ -934,10 +933,12 @@ def getUserData():
 
             user = {
                 'id': userDetails.user_auth_id,
-                'name': userDetails.name,
+                'firstname': userDetails.firstname,
+                'lastname': userDetails.lastname,
                 'email': userDetails.email,
                 'gender': userDetails.gender,
                 'hobbies': userDetails.hobbies,
+                'preferences': userDetails.preferences,
                 'phone_number': userDetails.phone_number,
                 'age': userDetails.age,
                 'bio': userDetails.bio,
@@ -949,7 +950,6 @@ def getUserData():
     
     except Exception as e:
         return jsonify({'error': 'Internal Server Error'}), 500
-
 
 # Getting Relationships DATA FROM DATABASE 2025
 @app.route('/relationshipData', methods=['GET'])
@@ -986,7 +986,6 @@ def getLocationData():
         for loc in locations
     ]
     return jsonify(data)
-
 
 # USER SIGNIN METHOD
 @app.route('/sign-in', methods=['POST'])
