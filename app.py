@@ -25,6 +25,11 @@ UPLOAD_FOLDER = 'uploads/'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+# Define the center coordinates and radius
+CENTER_LAT = 59.3293  # Latitude for Stockholm center
+CENTER_LNG = 18.0686  # Longitude for Stockholm center
+RADIUS = 0.03  # Radius in kilometers (approximately 30 meters)
+
 # Check if the file extension is allowed
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -93,6 +98,7 @@ class LocationData(db.Model):
     maxParticipants = db.Column(db.Integer)
     isFull = db.Column(db.Boolean, default=False)
     hasUserArrived = db.Column(db.Boolean, default=False)    
+    radius = db.Column(db.Float)  # New field to define the radius around the location
 
        
 class UserPreference(db.Model):
@@ -177,6 +183,46 @@ def set_preference():
     except Exception as e:
         print(f"Error in set_preference: {str(e)}")
         return jsonify({'error': 'Internal Server Error'}), 500
+    
+def is_within_location(lat, lng, center_lat, center_lng, radius):
+    """
+    Check if a user is within a specified radius of a center point.
+    """
+    lat1, lon1 = math.radians(center_lat), math.radians(center_lng)
+    lat2, lon2 = math.radians(lat), math.radians(lng)
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    distance = 6371 * c  # Earth radius in kilometers
+    return distance <= radius / 1000  # Convert radius from meters to kilometers
+
+def get_users_in_location(center_lat, center_lng, radius):
+    """
+    Get users within a specified radius of a center point.
+    """
+    users = Task.query.filter(
+        Task.lat is not None,
+        Task.lng is not None,
+    ).all()
+    return [user for user in users if is_within_location(user.lat, user.lng, center_lat, center_lng, radius)]
+
+def shuffle_matches(center_lat, center_lng, radius, max_users):
+    """
+    Shuffle matches for users within a specified location.
+    """
+    users = get_users_in_location(center_lat, center_lng, radius)
+    if len(users) > max_users:
+        users = users[:max_users]
+    # Shuffle users
+    random.shuffle(users)
+    # Create matches
+    for i in range(0, len(users), 2):
+        if i + 1 < len(users):
+            user1 = users[i]
+            user2 = users[i + 1]
+            process_potential_match(user1.id, user2.id)
+
 
 @app.route('/matches/<email>', methods=['GET'])
 def get_user_matches(email):
@@ -184,7 +230,6 @@ def get_user_matches(email):
         user = Task.query.filter_by(email=email).first()
         if not user:
             return jsonify({'error': 'User not found'}), 404
-        
         # Get all matches for this user that are visible now
         current_time = datetime.utcnow()
         matches = Match.query.filter(
@@ -195,7 +240,6 @@ def get_user_matches(email):
             Match.status != 'deleted',
             Match.visible_after <= current_time
         ).all()
-        
         # Format the response
         result = []
         for match in matches:
@@ -203,19 +247,19 @@ def get_user_matches(email):
             other_user_id = match.user2_id if match.user1_id == user.id else match.user1_id
             other_user = Task.query.get(other_user_id)
             other_user_data = UserData.query.filter_by(user_auth_id=other_user_id).first()
-            
             if not other_user or not other_user_data:
                 continue
-                
+            # Check if the other user is within the specified location
+            location = LocationData.query.filter_by(id=other_user_data.location_id).first()
+            if not location or not is_within_location(other_user.lat, other_user.lng, location.lat, location.lng, location.radius):
+                continue
             # Get user preferences
             user_pref = UserPreference.query.filter_by(
                 user_id=user.id, preferred_user_id=other_user_id
             ).first()
-            
             other_pref = UserPreference.query.filter_by(
                 user_id=other_user_id, preferred_user_id=user.id
             ).first()
-            
             # Determine match status from user's perspective
             if match.status == 'active':
                 # Both liked each other
@@ -231,13 +275,11 @@ def get_user_matches(email):
                 else:
                     display_status = 'pending'  # Generic pending
                     show_message_button = False
-            
             # Get profile image
             user_image = UserImages.query.filter_by(user_auth_id=other_user_id).first()
             image_url = None
             if user_image and user_image.imageString:
                 image_url = request.host_url + 'uploads/' + user_image.imageString
-            
             # Add match to result
             result.append({
                 'match_id': match.id,
@@ -251,9 +293,7 @@ def get_user_matches(email):
                 'match_date': match.match_date,
                 'image_url': image_url
             })
-        
         return jsonify({'matches': result}), 200
-        
     except Exception as e:
         print(f"Error in get_user_matches: {str(e)}")
         return jsonify({'error': 'Internal Server Error'}), 500
@@ -338,15 +378,25 @@ def update_match_status():
 
 
 def process_potential_match(user1_id, user2_id):
-    """Process potential match between two users based on their preferences"""
+    """
+    Process potential match between two users based on their preferences and location.
+    """
+    user1 = Task.query.get(user1_id)
+    user2 = Task.query.get(user2_id)
+    # Check if both users are within the specified location
+    if not is_within_location(user1.lat, user1.lng, CENTER_LAT, CENTER_LNG, RADIUS) or \
+            not is_within_location(user2.lat, user2.lng, CENTER_LAT, CENTER_LNG, RADIUS):
+        return
+    # Rest of the function remains the same...
+
     # Get preferences in both directions
     pref1 = UserPreference.query.filter_by(user_id=user1_id, preferred_user_id=user2_id).first()
     pref2 = UserPreference.query.filter_by(user_id=user2_id, preferred_user_id=user1_id).first()
-    
+
     # If either preference doesn't exist yet, no match to process
     if not pref1 or not pref2:
         return
-    
+
     # Check if there's an existing match
     existing_match = Match.query.filter(
         or_(
@@ -354,7 +404,7 @@ def process_potential_match(user1_id, user2_id):
             and_(Match.user1_id == user2_id, Match.user2_id == user1_id)
         )
     ).first()
-    
+
     # Case I: Both users like each other
     if pref1.preference == 'like' and pref2.preference == 'like':
         if existing_match:
@@ -370,13 +420,11 @@ def process_potential_match(user1_id, user2_id):
                 status='active'
             )
             db.session.add(new_match)
-    
     # Case II: One or both users rejected
     elif pref1.preference == 'reject' or pref2.preference == 'reject':
         if existing_match:
             # Mark match as deleted
             existing_match.status = 'deleted'
-    
     # Case III & IV: Save for later scenarios
     elif pref1.preference == 'save_later' or pref2.preference == 'save_later':
         # Only proceed if neither preference is 'reject'
@@ -390,6 +438,7 @@ def process_potential_match(user1_id, user2_id):
                     visible_after=datetime.utcnow()  # Visible immediately, but pending
                 )
                 db.session.add(new_match)
+
 
 
 def get_match_score(user1_data, user2_data):
@@ -476,10 +525,10 @@ def get_user_matches(user_id, limit=5):
         if not user:
             print(f"No user found for ID: {user_id}")
             return []
-            
+
         # Normalize gender values for consistent comparison
         user_gender = user.gender.lower() if user.gender else None
-        
+
         # Get users of opposite gender, handling different gender formats
         if user_gender == 'men' or user_gender == 'man':
             target_gender = ['Woman', 'woman', 'Women', 'women', 'Female', 'female']
@@ -487,17 +536,18 @@ def get_user_matches(user_id, limit=5):
             target_gender = ['Men', 'men', 'Man', 'man', 'Male', 'male']
         else:
             # If gender is something else or not specified, get any user
-            target_gender = ['Men', 'men', 'Man', 'man', 'Male', 'male', 'Woman', 'woman', 'Women', 'women', 'Female', 'female']
-        
+            target_gender = ['Men', 'men', 'Man', 'man', 'Male', 'male', 'Woman', 'woman', 'Women', 'women', 'Female',
+                             'female']
+
         # Get existing matches and preferences to avoid duplicates
         existing_matches = Match.query.filter(
             or_(Match.user1_id == user_id, Match.user2_id == user_id),
             # and_(Match.status != 'deleted', Match.status != 'active')
             Match.status != 'deleted'
         ).all()
-        
+
         existing_preferences = UserPreference.query.filter_by(user_id=user_id).all()
-        
+
         # Create sets of already matched/preferred user IDs
         matched_users = set()
         for match in existing_matches:
@@ -505,25 +555,25 @@ def get_user_matches(user_id, limit=5):
                 matched_users.add(match.user2_id)
             else:
                 matched_users.add(match.user1_id)
-                
+
         preferred_users = set([pref.preferred_user_id for pref in existing_preferences])
-        
+
         # Find potential matches (users of opposite gender not already matched/preferred)
         potential_matches = UserData.query.filter(
             UserData.gender.in_(target_gender),
             UserData.user_auth_id != user_id,
             ~UserData.user_auth_id.in_(matched_users.union(preferred_users))
         ).all()
-        
+
         # Calculate match scores and sort
         scored_matches = []
         for potential_match in potential_matches:
             score = get_match_score(user, potential_match)
             scored_matches.append((potential_match, score))
-        
+
         # Sort by score (highest first)
         scored_matches.sort(key=lambda x: x[1], reverse=True)
-        
+
         # Format results with top matches
         result = []
         for match, score in scored_matches[:limit]:
@@ -532,7 +582,6 @@ def get_user_matches(user_id, limit=5):
             image_url = None
             if user_image and user_image.imageString:
                 image_url = f"/uploads/{user_image.imageString}"
-
 
             result.append({
                 'user_id': match.user_auth_id,
@@ -547,11 +596,11 @@ def get_user_matches(user_id, limit=5):
                 'image_url': image_url
             })
 
-
         return result
     except Exception as e:
         print(f"Error in get_user_matches: {str(e)}")
         return []
+
 
 def match_all_users():
     """Match all users with someone from opposite gender"""
