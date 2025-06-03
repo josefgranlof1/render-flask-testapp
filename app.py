@@ -1030,6 +1030,7 @@ def getLocationData():
             'maxParticipants': loc.maxParticipants,
             'isFull': loc.isFull,
             'hasUserArrived': loc.hasUserArrived,
+            'radius': loc.radius,
 
         }
         for loc in locations
