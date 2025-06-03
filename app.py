@@ -10,7 +10,7 @@ from sqlalchemy import or_, and_
 
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp10_render_example_en6b_user:SCy7Ae3pBRbVfgPp094K8TyV3ewdhn6b@dpg-d0vc76u3jp1c73e14420-a.frankfurt-postgres.render.com/wingsdatingapp10_render_example_en6b"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp11_render_example_user:kp3sdckSeotYxxPrTAt9LWAwgefCGWqn@dpg-d0vceq95pdvs738bnv20-a.frankfurt-postgres.render.com/wingsdatingapp11_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
