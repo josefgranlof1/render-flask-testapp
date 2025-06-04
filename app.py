@@ -7,10 +7,10 @@ import os
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 from sqlalchemy import or_, and_
-
+from flask import request, jsonify
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp12_render_example_m3tz_user:QdSspXvKzEhFr2K59ASqQ5POlMfZQNji@dpg-d106eeemcj7s7388pn8g-a.frankfurt-postgres.render.com/wingsdatingapp12_render_example_m3tz"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp13_render_example_user:BqIik5IBeacU5HGtYgOee0WitXUNRgms@dpg-d10c51k9c44c73din130-a.frankfurt-postgres.render.com/wingsdatingapp13_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -888,6 +888,34 @@ def postRelationshipsData():
     except Exception as e:
         print(f"Error: {e}")
         return jsonify({'error': 'Internal Server Error'}), 500      
+    
+
+@app.route('/userLocation', methods=['POST'])
+def post_user_location():
+    try:
+        # Extract data from request
+        data = request.get_json()
+        lat = data.get('lat')
+        lng = data.get('lng')
+        radius = data.get('radius')
+
+        # Validate input
+        if lat is None or lng is None or radius is None:
+            return jsonify({"error": "Missing required fields: lat, lng, radius"}), 400
+
+        # Create a new UserLocation object
+        new_location = UserLocation(lat=lat, lng=lng, radius=radius)
+
+        # Add and commit to database
+        db.session.add(new_location)
+        db.session.commit()
+
+        return jsonify({"message": "User location added successfully", "id": new_location.id}), 201
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'error': 'Internal Server Error'}), 500
+
 
 
 @app.route('/upload_image', methods=['POST'])
