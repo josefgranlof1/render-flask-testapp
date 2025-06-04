@@ -10,7 +10,7 @@ from sqlalchemy import or_, and_
 
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp11_render_example_9hiy_user:Hm5IszpoOY9i3qhi9uYgl2zWUCuanVa8@dpg-d1060pje5dus739bsba0-a.frankfurt-postgres.render.com/wingsdatingapp11_render_example_9hiy"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp12_render_example_m3tz_user:QdSspXvKzEhFr2K59ASqQ5POlMfZQNji@dpg-d106eeemcj7s7388pn8g-a.frankfurt-postgres.render.com/wingsdatingapp12_render_example_m3tz"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -105,7 +105,7 @@ class UserLocation(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     lat = db.Column(db.Float)
     lng = db.Column(db.Float)
-    
+    radius = db.Column(db.Float)
        
 class UserPreference(db.Model):
     __tablename__ = 'user_preference'
@@ -1052,11 +1052,11 @@ def getUserLocation():
             'id': userloc.id,
             'lat': userloc.lat,
             'lng': userloc.lng,
+            'radius': userloc.radius,
         }
         for userloc in userlocations
     ]
     return jsonify(data)
-
 
 # USER SIGNIN METHOD
 @app.route('/sign-in', methods=['POST'])
