@@ -100,6 +100,12 @@ class LocationData(db.Model):
     hasUserArrived = db.Column(db.Boolean, default=False)    
     radius = db.Column(db.Float)  # New field to define the radius around the location
 
+class UserLocation(db.Model):
+    __tablename__ = 'userLocation'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    lat = db.Column(db.Float)
+    lng = db.Column(db.Float)
+    
        
 class UserPreference(db.Model):
     __tablename__ = 'user_preference'
@@ -1036,6 +1042,21 @@ def getLocationData():
         for loc in locations
     ]
     return jsonify(data)
+
+
+@app.route('/userLocation', methods=['GET'])
+def getUserLocation():
+    userlocations = UserLocation.query.all()
+    data = [
+        {
+            'id': userloc.id,
+            'lat': userloc.lat,
+            'lng': userloc.lng,
+        }
+        for userloc in userlocations
+    ]
+    return jsonify(data)
+
 
 # USER SIGNIN METHOD
 @app.route('/sign-in', methods=['POST'])
