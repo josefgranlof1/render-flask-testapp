@@ -10,7 +10,7 @@ from sqlalchemy import or_, and_
 from flask import request, jsonify
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp14_render_example_user:5YWBCT1H9pRriAiTI5t65zQCf6RFo7lE@dpg-d120f8p5pdvs73c76h30-a.frankfurt-postgres.render.com/wingsdatingapp14_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp15_render_example_user:zt1XexpaQ3DuBKpiWpDgWxMElIi391rQ@dpg-d12170s9c44c73fqqu4g-a.frankfurt-postgres.render.com/wingsdatingapp15_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -895,31 +895,66 @@ def postRelationshipsData():
         return jsonify({'error': 'Internal Server Error'}), 500      
     
 
+# @app.route('/userLocation', methods=['POST'])
+# def post_user_location():
+#     try:
+#         # Extract data from request
+#         data = request.get_json()
+#         lat = data.get('lat')
+#         lng = data.get('lng')
+#         radius = data.get('radius')
+
+#         # Validate input
+#         if lat is None or lng is None or radius is None:
+#             return jsonify({"error": "Missing required fields: lat, lng, radius"}), 400
+
+#         # Create a new UserLocation object
+#         user_auth_id = user.id
+#         new_location = UserLocation(lat=lat, lng=lng, radius=radius)
+
+#         # Add and commit to database
+#         db.session.add(new_location)
+#         db.session.commit()
+
+#         return jsonify({"message": "User location added successfully", "id": new_location.id}), 201
+
+#     except Exception as e:
+#         print(f"Error: {e}")
+#         return jsonify({'error': 'Internal Server Error'}), 500
+    
 @app.route('/userLocation', methods=['POST'])
 def post_user_location():
     try:
-        # Extract data from request
         data = request.get_json()
+
+        user_auth_id = data.get('user_auth_id')
         lat = data.get('lat')
         lng = data.get('lng')
         radius = data.get('radius')
 
-        # Validate input
-        if lat is None or lng is None or radius is None:
-            return jsonify({"error": "Missing required fields: lat, lng, radius"}), 400
+        # Validate required fields
+        if user_auth_id is None:
+            return jsonify({'error': 'user_auth_id is required'}), 400
 
-        # Create a new UserLocation object
-        new_location = UserLocation(lat=lat, lng=lng, radius=radius)
+        # Optionally validate lat/lng/radius if needed
+        # For example, check if they are within valid ranges
 
-        # Add and commit to database
-        db.session.add(new_location)
+        relationship_data = RelationshipData(
+            user_auth_id=user_auth_id,
+            lat=lat,
+            lng=lng,
+            radius=radius
+        )
+
+        db.session.add(relationship_data)
         db.session.commit()
 
-        return jsonify({"message": "User location added successfully", "id": new_location.id}), 201
+        return jsonify({'message': 'UserLocation data added successfully'}), 201
 
     except Exception as e:
         print(f"Error: {e}")
         return jsonify({'error': 'Internal Server Error'}), 500
+
 
 
 
@@ -1083,6 +1118,7 @@ def getUserLocation():
     data = [
         {
             'id': userloc.id,
+            'user_auth_id': userloc.user_auth_id,
             'lat': userloc.lat,
             'lng': userloc.lng,
             'radius': userloc.radius,
