@@ -898,58 +898,49 @@ def postRelationshipsData():
 @app.route('/userLocation', methods=['POST'])
 def post_user_location():
     try:
-        # Extract data from request
         data = request.get_json()
-        new_user_id = data.get('id')
+
+        user_id = data.get('id')
         lat = data.get('lat')
         lng = data.get('lng')
         radius = data.get('radius')
 
         # Validate input
-        if lat is None or lng is None:
-            return jsonify({"error": "Missing required fields: lat, lng, radius"}), 400
+        if user_id is None or lat is None or lng is None or radius is None:
+            return jsonify({"error": "Missing required fields"}), 400
 
-        # Fetch the user by id
-        user = Task.query.filter_by(id=new_user_id).first()
-        
+        # Check if user exists
+        user = Task.query.filter_by(id=user_id).first()
         if not user:
-        return jsonify({"error": "User not found"}), 404
+            return jsonify({"error": "User not found"}), 404
 
-        new_user_id = user.id
-        lat = data['lat']
-        lng = data['lng']
-        radius = data['radius']
-        
-        # Create a new UserLocation object
-        new_location = UserLocation(id=new_user_id, lat=lat, lng=lng, radius=radius)
+        # Check if user location already exists
+        existing_location = UserLocation.query.filter_by(id=user_id).first()
 
-        if new_location:
-            # Update existing preference
-            new_location.lat = lat
-            new_location.lng = lng
-            new_location.radius = radius
-
-            message = "Updated user relationshipData"
+        if existing_location:
+            # Update existing
+            existing_location.lat = lat
+            existing_location.lng = lng
+            existing_location.radius = radius
+            message = "Updated user location"
         else:
-            # Create new preference
+            # Create new
             new_location = UserLocation(
-                id=new_user_id, 
-                lat=lat, 
-                lng=lng, 
+                id=user_id,  # only if your PK is intended to match the user's id
+                lat=lat,
+                lng=lng,
                 radius=radius
             )
             db.session.add(new_location)
-        message = "Added new user relationshipData"           
-            
-        # Add and commit to database
-        db.session.add(new_location)
-        db.session.commit()
+            message = "Added new user location"
 
-        return jsonify({"message": "User location added successfully", "id": new_location.id}), 201
+        db.session.commit()
+        return jsonify({"message": message, "id": user_id}), 201
 
     except Exception as e:
-    print(f"Error: {e}")
-return jsonify({'error': 'Internal Server Error'}), 500
+        print(f"Error: {e}")
+        return jsonify({'error': 'Internal Server Error'}), 500
+
 
     
 # @app.route('/userLocation', methods=['POST'])
