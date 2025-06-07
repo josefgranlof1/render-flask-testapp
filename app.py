@@ -900,7 +900,7 @@ def post_user_location():
     try:
         # Extract data from request
         data = request.get_json()
-        new_user_id = data.get('user_id')
+        new_user_id = data.get('id')
         lat = data.get('lat')
         lng = data.get('lng')
         radius = data.get('radius')
@@ -910,7 +910,7 @@ def post_user_location():
             return jsonify({"error": "Missing required fields: lat, lng, radius"}), 400
 
         # Fetch the user by id
-        user = Task.query.filter_by(user_id=new_user_id).first()
+        user = Task.query.filter_by(id=new_user_id).first()
         
         if not user:
         return jsonify({"error": "User not found"}), 404
@@ -921,19 +921,19 @@ def post_user_location():
         radius = data['radius']
         
         # Create a new UserLocation object
-        new_location = UserLocation(user_id=new_user_id, lat=lat, lng=lng, radius=radius)
+        new_location = UserLocation(id=new_user_id, lat=lat, lng=lng, radius=radius)
 
         if new_location:
             # Update existing preference
-            new_location.lookingfor = lat
-            new_location.openfor = lng
-            new_location.email = radius
+            new_location.lat = lat
+            new_location.lng = lng
+            new_location.radius = radius
 
             message = "Updated user relationshipData"
         else:
             # Create new preference
             new_location = UserLocation(
-                user_id=new_user_id, 
+                id=new_user_id, 
                 lat=lat, 
                 lng=lng, 
                 radius=radius
@@ -948,8 +948,8 @@ def post_user_location():
         return jsonify({"message": "User location added successfully", "id": new_location.id}), 201
 
     except Exception as e:
-        print(f"Error: {e}")
-        return jsonify({'error': 'Internal Server Error'}), 500
+    print(f"Error: {e}")
+return jsonify({'error': 'Internal Server Error'}), 500
 
     
 # @app.route('/userLocation', methods=['POST'])
