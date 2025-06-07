@@ -10,7 +10,7 @@ from sqlalchemy import or_, and_
 from flask import request, jsonify
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp13_render_example_user:BqIik5IBeacU5HGtYgOee0WitXUNRgms@dpg-d10c51k9c44c73din130-a.frankfurt-postgres.render.com/wingsdatingapp13_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp14_render_example_user:5YWBCT1H9pRriAiTI5t65zQCf6RFo7lE@dpg-d120f8p5pdvs73c76h30-a.frankfurt-postgres.render.com/wingsdatingapp14_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -100,12 +100,17 @@ class LocationData(db.Model):
     hasUserArrived = db.Column(db.Boolean, default=False)    
     radius = db.Column(db.Float)  # New field to define the radius around the location
 
+
 class UserLocation(db.Model):
     __tablename__ = 'userLocation'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     lat = db.Column(db.Float)
     lng = db.Column(db.Float)
     radius = db.Column(db.Float)
+    
+    user = db.relationship('Task', backref=db.backref('user_location', lazy=True))    
+
        
 class UserPreference(db.Model):
     __tablename__ = 'user_preference'
