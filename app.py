@@ -10,7 +10,7 @@ from sqlalchemy import or_, and_
 from flask import request, jsonify
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp15_render_example_user:zt1XexpaQ3DuBKpiWpDgWxMElIi391rQ@dpg-d12170s9c44c73fqqu4g-a.frankfurt-postgres.render.com/wingsdatingapp15_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp16_render_example_user:RFrW0flSDysJA003QBwzfGCkcOeQArTK@dpg-d121hqbuibrs73enlmu0-a.frankfurt-postgres.render.com/wingsdatingapp16_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -936,17 +936,14 @@ def post_user_location():
         if user_auth_id is None:
             return jsonify({'error': 'user_auth_id is required'}), 400
 
-        # Optionally validate lat/lng/radius if needed
-        # For example, check if they are within valid ranges
-
-        relationship_data = RelationshipData(
+        userLocation_data = UserLocation(
             user_auth_id=user_auth_id,
             lat=lat,
             lng=lng,
             radius=radius
         )
 
-        db.session.add(relationship_data)
+        db.session.add(userLocation_data)
         db.session.commit()
 
         return jsonify({'message': 'UserLocation data added successfully'}), 201
@@ -954,8 +951,6 @@ def post_user_location():
     except Exception as e:
         print(f"Error: {e}")
         return jsonify({'error': 'Internal Server Error'}), 500
-
-
 
 
 @app.route('/upload_image', methods=['POST'])
