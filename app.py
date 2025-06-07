@@ -10,7 +10,7 @@ from sqlalchemy import or_, and_
 from flask import request, jsonify
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp16_render_example_user:RFrW0flSDysJA003QBwzfGCkcOeQArTK@dpg-d121hqbuibrs73enlmu0-a.frankfurt-postgres.render.com/wingsdatingapp16_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp1_render_example_i94w_user:2eRtfOrtsqIETQSeewkH9tPAoQV0lhvU@dpg-d1273smmcj7s73f2k1f0-a.frankfurt-postgres.render.com/wingsdatingapp1_render_example_i94w"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -104,7 +104,7 @@ class LocationData(db.Model):
 class UserLocation(db.Model):
     __tablename__ = 'userLocation'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     lat = db.Column(db.Float)
     lng = db.Column(db.Float)
     radius = db.Column(db.Float)
@@ -895,62 +895,92 @@ def postRelationshipsData():
         return jsonify({'error': 'Internal Server Error'}), 500      
     
 
-# @app.route('/userLocation', methods=['POST'])
-# def post_user_location():
-#     try:
-#         # Extract data from request
-#         data = request.get_json()
-#         lat = data.get('lat')
-#         lng = data.get('lng')
-#         radius = data.get('radius')
-
-#         # Validate input
-#         if lat is None or lng is None or radius is None:
-#             return jsonify({"error": "Missing required fields: lat, lng, radius"}), 400
-
-#         # Create a new UserLocation object
-#         user_auth_id = user.id
-#         new_location = UserLocation(lat=lat, lng=lng, radius=radius)
-
-#         # Add and commit to database
-#         db.session.add(new_location)
-#         db.session.commit()
-
-#         return jsonify({"message": "User location added successfully", "id": new_location.id}), 201
-
-#     except Exception as e:
-#         print(f"Error: {e}")
-#         return jsonify({'error': 'Internal Server Error'}), 500
-    
 @app.route('/userLocation', methods=['POST'])
 def post_user_location():
     try:
+        # Extract data from request
         data = request.get_json()
-
-        user_auth_id = data.get('user_auth_id')
+        new_user_id = data.get('user_id')
         lat = data.get('lat')
         lng = data.get('lng')
         radius = data.get('radius')
 
-        # Validate required fields
-        if user_auth_id is None:
-            return jsonify({'error': 'user_auth_id is required'}), 400
+        # Validate input
+        if lat is None or lng is None:
+            return jsonify({"error": "Missing required fields: lat, lng, radius"}), 400
 
-        userLocation_data = UserLocation(
-            user_auth_id=user_auth_id,
-            lat=lat,
-            lng=lng,
-            radius=radius
-        )
+        # Fetch the user by id
+        user = Task.query.filter_by(user_id=new_user_id).first()
+        
+        if not user:
+        return jsonify({"error": "User not found"}), 404
 
-        db.session.add(userLocation_data)
+        new_user_id = user.id
+        lat = data['lat']
+        lng = data['lng']
+        radius = data['radius']
+        
+        # Create a new UserLocation object
+        new_location = UserLocation(user_id=new_user_id, lat=lat, lng=lng, radius=radius)
+
+        if new_location:
+            # Update existing preference
+            new_location.lookingfor = lat
+            new_location.openfor = lng
+            new_location.email = radius
+
+            message = "Updated user relationshipData"
+        else:
+            # Create new preference
+            new_location = UserLocation(
+                user_id=new_user_id, 
+                lat=lat, 
+                lng=lng, 
+                radius=radius
+            )
+            db.session.add(new_location)
+        message = "Added new user relationshipData"           
+            
+        # Add and commit to database
+        db.session.add(new_location)
         db.session.commit()
 
-        return jsonify({'message': 'UserLocation data added successfully'}), 201
+        return jsonify({"message": "User location added successfully", "id": new_location.id}), 201
 
     except Exception as e:
         print(f"Error: {e}")
         return jsonify({'error': 'Internal Server Error'}), 500
+
+    
+# @app.route('/userLocation', methods=['POST'])
+# def post_user_location():
+#     try:
+#         data = request.get_json()
+
+#         user_auth_id = data.get('user_auth_id')
+#         lat = data.get('lat')
+#         lng = data.get('lng')
+#         radius = data.get('radius')
+
+#         # Validate required fields
+#         if user_auth_id is None:
+#             return jsonify({'error': 'user_auth_id is required'}), 400
+
+#         userLocation_data = UserLocation(
+#             user_auth_id=user_auth_id,
+#             lat=lat,
+#             lng=lng,
+#             radius=radius
+#         )
+
+#         db.session.add(userLocation_data)
+#         db.session.commit()
+
+#         return jsonify({'message': 'UserLocation data added successfully'}), 201
+
+#     except Exception as e:
+#         print(f"Error: {e}")
+#         return jsonify({'error': 'Internal Server Error'}), 500
 
 
 @app.route('/upload_image', methods=['POST'])
