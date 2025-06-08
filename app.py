@@ -895,8 +895,8 @@ def postRelationshipsData():
         return jsonify({'error': 'Internal Server Error'}), 500      
     
 
-@app.route('/userLocation', methods=['POST'])
-def post_user_location():
+# @app.route('/userLocation', methods=['POST'])
+# def post_user_location():
     try:
         data = request.get_json()
 
@@ -943,35 +943,34 @@ def post_user_location():
 
 
     
-# @app.route('/userLocation', methods=['POST'])
-# def post_user_location():
-#     try:
-#         data = request.get_json()
+@app.route('/userLocation', methods=['POST'])
+def post_user_location():
+    try:
+        data = request.get_json()
 
-#         user_auth_id = data.get('user_auth_id')
-#         lat = data.get('lat')
-#         lng = data.get('lng')
-#         radius = data.get('radius')
+        user_id = data.get('user_id')
+        lat = data.get('lat')
+        lng = data.get('lng')
+        radius = data.get('radius')
 
-#         # Validate required fields
-#         if user_auth_id is None:
-#             return jsonify({'error': 'user_auth_id is required'}), 400
+        # Validate required fields
+        if user_id is None:
+            return jsonify({'error': 'user_id is required'}), 400
 
-#         userLocation_data = UserLocation(
-#             user_auth_id=user_auth_id,
-#             lat=lat,
-#             lng=lng,
-#             radius=radius
-#         )
+        userLocation_data = UserLocation(
+            user_id=user_id,
+            lat=lat,
+            lng=lng,
+            radius=radius
+        )
 
-#         db.session.add(userLocation_data)
-#         db.session.commit()
+        db.session.add(userLocation_data)
+        db.session.commit()
+        return jsonify({'message': 'UserLocation data added successfully'}), 201
 
-#         return jsonify({'message': 'UserLocation data added successfully'}), 201
-
-#     except Exception as e:
-#         print(f"Error: {e}")
-#         return jsonify({'error': 'Internal Server Error'}), 500
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'error': 'Internal Server Error'}), 500
 
 
 @app.route('/upload_image', methods=['POST'])
