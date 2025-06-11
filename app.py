@@ -10,7 +10,7 @@ from sqlalchemy import or_, and_
 from flask import request, jsonify
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp1_render_example_i94w_user:2eRtfOrtsqIETQSeewkH9tPAoQV0lhvU@dpg-d1273smmcj7s73f2k1f0-a.frankfurt-postgres.render.com/wingsdatingapp1_render_example_i94w"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp2_render_example_qlnn_user:xuCBlBLm9LUkKgXZL9EflGicIDmxVjAn@dpg-d14sqsjuibrs73c0gke0-a.frankfurt-postgres.render.com/wingsdatingapp2_render_example_qlnn"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -109,7 +109,20 @@ class UserLocation(db.Model):
     lng = db.Column(db.Float)
     radius = db.Column(db.Float)
     
-    user = db.relationship('Task', backref=db.backref('user_location', lazy=True))    
+    user = db.relationship('Task', backref=db.backref('user_location', lazy=True)) 
+    
+class LocationInfo(db.Model):
+    __tablename__ = 'locationInfo'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    maxAttendees = db.Column(db.Integer)
+    maleAttendees = db.Column(db.Integer)
+    femaleAttendees = db.Column(db.Integer)
+    date = db.Column(db.String(200))
+    time = db.Column(db.String(20))
+    location = db.Column(db.String(200))
+    lat = db.Column(db.Float)
+    lng = db.Column(db.Float)
+    totalPrice = db.Column(db.Integer)   
 
        
 class UserPreference(db.Model):
@@ -1141,6 +1154,26 @@ def getUserLocation():
         for userloc in userlocations
     ]
     return jsonify(data)
+
+@app.route('/locationInfo', methods=['GET'])
+def getLocationInfo():
+    locationInfo = LocationInfo.query.all()
+    data = [
+        {
+            'id': userloc.id,
+            'maxAttendees': userloc.maxAttendees,
+            'maleAttendees': userloc.maleAttendees,
+            'femaleAttendees': userloc.femaleAttendees,
+            'date': userloc.date,
+            'location': userloc.location,
+            'lat': userloc.lat,
+            'lng': userloc.lng,
+            'totalPrice': userloc.totalPrice,            
+        }
+        for userloc in locationInfo
+    ]
+    return jsonify(data)
+
 
 # USER SIGNIN METHOD
 @app.route('/sign-in', methods=['POST'])
