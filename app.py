@@ -10,7 +10,7 @@ from sqlalchemy import or_, and_
 from flask import request, jsonify
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp3_render_example_65n4_user:FGIbCg2RoCg64N71CR99Wn6CujNyrVpM@dpg-d17h3dgdl3ps73afooqg-a.frankfurt-postgres.render.com/wingsdatingapp3_render_example_65n4"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp4_render_example_pt55_user:lX75koLEnIQpkv46gGp1E5SCzywGDKXt@dpg-d17i2t95pdvs738drsr0-a.frankfurt-postgres.render.com/wingsdatingapp4_render_example_pt55"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -39,7 +39,6 @@ class Task(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     email = db.Column(db.String(200), unique=True,nullable=False)
     password = db.Column(db.String, nullable=False)
-    gender = db.Column(db.String(10))  # 'male' or 'female'
 
 
 class Message(db.Model):
@@ -58,17 +57,18 @@ class UserData(db.Model):
     __tablename__ = 'userdata'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
+
     firstname = db.Column(db.String(255))
     lastname = db.Column(db.String(255))
     email = db.Column(db.String(200))
-    gender = db.Column(db.String(50))
+    gender = db.Column(db.String(50))  # Keep gender here
     hobbies = db.Column(db.ARRAY(db.String))
     preferences = db.Column(db.ARRAY(db.String))
     phone_number = db.Column(db.String(50))
     age = db.Column(db.String(10))
     bio = db.Column(db.Text)
-    
-    user = db.relationship('Task', backref=db.backref('user_data', lazy=True))
+
+    user = db.relationship('Task', backref=db.backref('user_data', uselist=False))
 
 class RelationshipData(db.Model):
     __tablename__ = 'relationshipData'
@@ -1218,6 +1218,41 @@ def attend_location():
     location_id = data.get('location_id')
 
     user = Task.query.get(user_id)
+    if not user or not location_id:
+        return jsonify({'message': 'Invalid user or location'}), 404
+
+    location = LocationInfo.query.get(location_id)
+    if not location:
+        return jsonify({'message': 'Location not found'}), 404
+
+    if CheckIn.query.filter_by(user_id=user_id, location_id=location_id).first():
+        return jsonify({'message': 'User already checked in at this location'}), 400
+
+    # Get gender from user_data
+    profile = user.user_data
+    if not profile or not profile.gender:
+        return jsonify({'message': 'User profile or gender not set'}), 400
+
+    # Create check-in
+    new_checkin = CheckIn(user_id=user_id, location_id=location_id)
+    db.session.add(new_checkin)
+
+    # Update attendee count
+    if profile.gender.lower() == 'male':
+        location.maleAttendees = (location.maleAttendees or 0) + 1
+    elif profile.gender.lower() == 'female':
+        location.femaleAttendees = (location.femaleAttendees or 0) + 1
+
+    location.maxAttendees = (location.maxAttendees or 0) + 1
+    db.session.commit()
+
+    return jsonify({'message': 'User checked in and attendance updated'}), 200
+
+    data = request.get_json()
+    user_id = data.get('user_id')
+    location_id = data.get('location_id')
+
+    user = Task.query.get(user_id)
     location = LocationInfo.query.get(location_id)
 
     if not user or not location:
@@ -1244,8 +1279,42 @@ def attend_location():
 
     return jsonify({'message': 'User checked in and attendance updated'}), 200
 
+
 @app.route('/attend', methods=['GET'])
 def get_attendance():
+    location_id = request.args.get('location_id')
+
+    if not location_id:
+        return jsonify({'message': 'location_id is required'}), 400
+
+    location = LocationInfo.query.get(location_id)
+    if not location:
+        return jsonify({'message': 'Location not found'}), 404
+
+    checkins = CheckIn.query.filter_by(location_id=location.id).all()
+
+    attendee_list = []
+    for checkin in checkins:
+        user = Task.query.get(checkin.user_id)
+        profile = user.user_data  # Fetch gender and other details from UserData
+
+        attendee_list.append({
+            'user_id': user.id,
+            'email': user.email,
+            'gender': profile.gender if profile else None,
+            'checked_in_at': checkin.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+        })
+
+    return jsonify({
+        'location': location.location,
+        'date': location.date,
+        'time': location.time,
+        'maleAttendees': location.maleAttendees or 0,
+        'femaleAttendees': location.femaleAttendees or 0,
+        'totalAttendees': location.maxAttendees or 0,
+        'attendees': attendee_list
+    }), 200
+
     location_id = request.args.get('location_id')
 
     if not location_id:
