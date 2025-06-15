@@ -10,7 +10,7 @@ from sqlalchemy import or_, and_
 from flask import request, jsonify
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp4_render_example_pt55_user:lX75koLEnIQpkv46gGp1E5SCzywGDKXt@dpg-d17i2t95pdvs738drsr0-a.frankfurt-postgres.render.com/wingsdatingapp4_render_example_pt55"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp5_render_example_8mjc_user:XmvDozuQfHvy6GuS6EIz6jKCpVloOAHd@dpg-d17ieogdl3ps73ah8v30-a.frankfurt-postgres.render.com/wingsdatingapp5_render_example_8mjc"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -1210,6 +1210,24 @@ def checkin():
     db.session.commit()
 
     return jsonify({'message': 'Check-in successful'}), 200
+
+
+@app.route('/checkin', methods=['GET'])
+def check_checkin():
+    user_id = request.args.get('user_id')
+    location_id = request.args.get('location_id')
+
+    if not user_id or not location_id:
+        return jsonify({'message': 'Missing user_id or location_id'}), 400
+
+    checkin = CheckIn.query.filter_by(user_id=user_id, location_id=location_id).first()
+
+    if checkin:
+        return jsonify({'checked_in': True, 'timestamp': checkin.timestamp}), 200
+    else:
+        return jsonify({'checked_in': False}), 200
+
+
 
 @app.route('/attend', methods=['POST'])
 def attend_location():
