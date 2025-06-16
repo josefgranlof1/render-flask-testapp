@@ -1112,6 +1112,7 @@ def getLocationInfo():
             'maleAttendees': userloc.maleAttendees,
             'femaleAttendees': userloc.femaleAttendees,
             'date': userloc.date,
+            'time': userloc.time,            
             'location': userloc.location,
             'lat': userloc.lat,
             'lng': userloc.lng,
@@ -1120,7 +1121,6 @@ def getLocationInfo():
         for userloc in locationInfo
     ]
     return jsonify(data)
-
 
 @app.route('/checkin', methods=['POST'])
 def checkin():
