@@ -10,7 +10,7 @@ from sqlalchemy import or_, and_
 from flask import request, jsonify
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp6_render_example_si5f_user:oEbM4Zc01iPUBMKV4EZzS8kHVvOXIXFP@dpg-d180c70dl3ps739a4fi0-a.frankfurt-postgres.render.com/wingsdatingapp6_render_example_si5f"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp6_render_example_89l6_user:vI39HzTsrHtypgvp1fFi7uXGVZRjTUk9@dpg-d19etgfgi27c73fo3gc0-a.frankfurt-postgres.render.com/wingsdatingapp6_render_example_89l6"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -100,7 +100,9 @@ class LocationInfo(db.Model):
     location = db.Column(db.String(200))
     lat = db.Column(db.Float)
     lng = db.Column(db.Float)
-    totalPrice = db.Column(db.Integer)   
+    totalPrice = db.Column(db.Integer)
+    
+    event_type = db.Column(db.String(100))  # e.g. "Music", "DJ Night", "Live Band"   
 
 
 class CheckIn(db.Model):
@@ -1116,11 +1118,44 @@ def getLocationInfo():
             'location': userloc.location,
             'lat': userloc.lat,
             'lng': userloc.lng,
-            'totalPrice': userloc.totalPrice,            
+            'totalPrice': userloc.totalPrice,
+            'event_type': userloc.event_type                       
         }
         for userloc in locationInfo
     ]
     return jsonify(data)
+
+
+@app.route('/my_tickets', methods=['GET'])
+def get_user_tickets():
+    user_id = request.args.get('user_id')
+    
+    if not user_id:
+        return jsonify({'message': 'user_id is required'}), 400
+
+    attendances = Attendance.query.filter_by(user_id=user_id).all()
+    tickets = []
+
+    for attendance in attendances:
+        location = LocationInfo.query.get(attendance.location_id)
+        if not location:
+            continue
+
+        checked_in = CheckIn.query.filter_by(user_id=user_id, location_id=location.id).first() is not None
+
+        tickets.append({
+            'location_id': location.id,
+            'event_type': location.event_type,       # Event type
+            'date': location.date,
+            'time': location.time,
+            'location': location.location,
+            'checked_in': checked_in,                # Check-in status
+            'maleAttendees': location.maleAttendees or 0,
+            'femaleAttendees': location.femaleAttendees or 0
+        })
+
+    return jsonify({'tickets': tickets}), 200
+
 
 @app.route('/checkin', methods=['POST'])
 def checkin():
@@ -1150,7 +1185,6 @@ def checkin():
     return jsonify({'message': 'Check-in successful'}), 200
 
 
-
 @app.route('/checkin', methods=['GET'])
 def check_checkin():
     user_id = request.args.get('user_id')
@@ -1165,8 +1199,6 @@ def check_checkin():
         return jsonify({'checked_in': True, 'timestamp': checkin.timestamp}), 200
     else:
         return jsonify({'checked_in': False}), 200
-
-
 
 
 @app.route('/attend', methods=['POST'])
