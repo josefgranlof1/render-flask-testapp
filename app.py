@@ -1227,7 +1227,7 @@ def attend_location():
     attendance = Attendance(user_id=user_id, location_id=location_id)
     db.session.add(attendance)
 
-    # Update gender-based attendee counts
+    # Update gender-based counts
     gender = profile.gender.lower()
     if gender == 'male':
         location.maleAttendees = (location.maleAttendees or 0) + 1
@@ -1239,116 +1239,10 @@ def attend_location():
     db.session.commit()
 
     return jsonify({'message': 'User marked as attending and counts updated'}), 200
-
-    data = request.get_json()
-    user_id = data.get('user_id')
-    location_id = data.get('location_id')
-
-    if not user_id or not location_id:
-        return jsonify({'message': 'Missing user_id or location_id'}), 400
-
-    user = Task.query.get(user_id)
-    location = LocationInfo.query.get(location_id)
-    profile = UserData.query.filter_by(user_auth_id=user_id).first()
-
-    if not user or not location:
-        return jsonify({'message': 'Invalid user or location'}), 404
-
-    if not profile or not profile.gender:
-        return jsonify({'message': 'User profile or gender not set'}), 400
-
-    # Check if already attending
-    if Attendance.query.filter_by(user_id=user_id, location_id=location_id).first():
-        return jsonify({'message': 'User already marked as attending'}), 400
-
-    # Mark attendance
-    attendance = Attendance(user_id=user_id, location_id=location_id)
-    db.session.add(attendance)
-
-    # Update gender-based attendee counts
-    gender = profile.gender.lower()
-    if gender == 'male':
-        location.maleAttendees = (location.maleAttendees or 0) + 1
-    elif gender == 'female':
-        location.femaleAttendees = (location.femaleAttendees or 0) + 1
-
-    location.maxAttendees = (location.maxAttendees or 0) + 1
-
-    db.session.commit()
-
-    return jsonify({'message': 'User marked as attending and counts updated'}), 200
-
-    data = request.get_json()
-    user_id = data.get('user_id')
-    location_id = data.get('location_id')
-
-    user = Task.query.get(user_id)
-    if not user or not location_id:
-        return jsonify({'message': 'Invalid user or location'}), 404
-
-    location = LocationInfo.query.get(location_id)
-    if not location:
-        return jsonify({'message': 'Location not found'}), 404
-
-    if CheckIn.query.filter_by(user_id=user_id, location_id=location_id).first():
-        return jsonify({'message': 'User already checked in at this location'}), 400
-
-    # Get gender from user_data
-    profile = user.user_data
-    if not profile or not profile.gender:
-        return jsonify({'message': 'User profile or gender not set'}), 400
-
-    # Create check-in
-    new_checkin = CheckIn(user_id=user_id, location_id=location_id)
-    db.session.add(new_checkin)
-
-    # Update attendee count
-    if profile.gender.lower() == 'male':
-        location.maleAttendees = (location.maleAttendees or 0) + 1
-    elif profile.gender.lower() == 'female':
-        location.femaleAttendees = (location.femaleAttendees or 0) + 1
-
-    location.maxAttendees = (location.maxAttendees or 0) + 1
-    db.session.commit()
-
-    return jsonify({'message': 'User checked in and attendance updated'}), 200
-
-    data = request.get_json()
-    user_id = data.get('user_id')
-    location_id = data.get('location_id')
-
-    user = Task.query.get(user_id)
-    location = LocationInfo.query.get(location_id)
-
-    if not user or not location:
-        return jsonify({'message': 'Invalid user or location'}), 404
-
-    # Check if already checked in
-    existing_checkin = CheckIn.query.filter_by(user_id=user_id, location_id=location_id).first()
-    if existing_checkin:
-        return jsonify({'message': 'User already checked in at this location'}), 400
-
-    # Create new check-in
-    new_checkin = CheckIn(user_id=user_id, location_id=location_id)
-    db.session.add(new_checkin)
-
-    # Update location attendee count
-    if user.gender == 'male':
-        location.maleAttendees = (location.maleAttendees or 0) + 1
-    elif user.gender == 'female':
-        location.femaleAttendees = (location.femaleAttendees or 0) + 1
-
-    location.maxAttendees = (location.maxAttendees or 0) + 1
-
-    db.session.commit()
-
-    return jsonify({'message': 'User checked in and attendance updated'}), 200
-
 
 @app.route('/attend', methods=['GET'])
 def get_attendance():
     location_id = request.args.get('location_id')
-
     if not location_id:
         return jsonify({'message': 'location_id is required'}), 400
 
@@ -1361,7 +1255,7 @@ def get_attendance():
     attendee_list = []
     for attendance in attendances:
         user = Task.query.get(attendance.user_id)
-        profile = user.user_data
+        profile = getattr(user, 'user_data', None)
         checked_in = CheckIn.query.filter_by(user_id=user.id, location_id=location.id).first() is not None
 
         attendee_list.append({
@@ -1370,107 +1264,6 @@ def get_attendance():
             'gender': profile.gender if profile else None,
             'attending_at': attendance.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
             'checked_in': checked_in
-        })
-
-    return jsonify({
-        'location': location.location,
-        'date': location.date,
-        'time': location.time,
-        'maleAttendees': location.maleAttendees or 0,
-        'femaleAttendees': location.femaleAttendees or 0,
-        'totalAttendees': location.maxAttendees or 0,
-        'attendees': attendee_list
-    }), 200
-
-    location_id = request.args.get('location_id')
-
-    if not location_id:
-        return jsonify({'message': 'location_id is required'}), 400
-
-    location = LocationInfo.query.get(location_id)
-    if not location:
-        return jsonify({'message': 'Location not found'}), 404
-
-    attendances = Attendance.query.filter_by(location_id=location.id).all()
-
-    attendee_list = []
-    for attendance in attendances:
-        user = Task.query.get(attendance.user_id)
-        profile = user.user_data
-
-        # Check if user has checked in
-        has_checked_in = CheckIn.query.filter_by(user_id=user.id, location_id=location.id).first() is not None
-
-        attendee_list.append({
-            'user_id': user.id,
-            'email': user.email,
-            'gender': profile.gender if profile else None,
-            'attending_at': attendance.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
-            'checked_in': has_checked_in
-        })
-
-    return jsonify({
-        'location': location.location,
-        'date': location.date,
-        'time': location.time,
-        'maleAttendees': location.maleAttendees or 0,
-        'femaleAttendees': location.femaleAttendees or 0,
-        'totalAttendees': location.maxAttendees or 0,
-        'attendees': attendee_list
-    }), 200
-
-    location_id = request.args.get('location_id')
-
-    if not location_id:
-        return jsonify({'message': 'location_id is required'}), 400
-
-    location = LocationInfo.query.get(location_id)
-    if not location:
-        return jsonify({'message': 'Location not found'}), 404
-
-    checkins = CheckIn.query.filter_by(location_id=location.id).all()
-
-    attendee_list = []
-    for checkin in checkins:
-        user = Task.query.get(checkin.user_id)
-        profile = user.user_data  # Fetch gender and other details from UserData
-
-        attendee_list.append({
-            'user_id': user.id,
-            'email': user.email,
-            'gender': profile.gender if profile else None,
-            'checked_in_at': checkin.timestamp.strftime('%Y-%m-%d %H:%M:%S')
-        })
-
-    return jsonify({
-        'location': location.location,
-        'date': location.date,
-        'time': location.time,
-        'maleAttendees': location.maleAttendees or 0,
-        'femaleAttendees': location.femaleAttendees or 0,
-        'totalAttendees': location.maxAttendees or 0,
-        'attendees': attendee_list
-    }), 200
-
-    location_id = request.args.get('location_id')
-
-    if not location_id:
-        return jsonify({'message': 'location_id is required'}), 400
-
-    location = LocationInfo.query.get(location_id)
-    if not location:
-        return jsonify({'message': 'Location not found'}), 404
-
-    checkins = CheckIn.query.filter_by(location_id=location.id).all()
-
-    attendee_list = []
-    for checkin in checkins:
-        user = Task.query.get(checkin.user_id)
-        attendee_list.append({
-            'user_id': user.id,
-            'email': user.email,
-            'gender': user.gender,
-            'checked_in_at': checkin.timestamp.strftime('%Y-%m-%d %H:%M:%S')
         })
 
     return jsonify({
