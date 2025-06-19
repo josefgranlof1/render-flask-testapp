@@ -1196,9 +1196,27 @@ def check_checkin():
     checkin = CheckIn.query.filter_by(user_id=user_id, location_id=location_id).first()
 
     if checkin:
-        return jsonify({'checked_in': True, 'timestamp': checkin.timestamp}), 200
+        location = checkin.location
+        return jsonify({
+            'checked_in': True,
+            'timestamp': checkin.timestamp,
+            'location': {
+                'id': location.id,
+                'location': location.location,
+                'date': location.date,
+                'time': location.time,
+                'lat': location.lat,
+                'lng': location.lng,
+                'event_type': location.event_type,
+                'maxAttendees': location.maxAttendees,
+                'maleAttendees': location.maleAttendees,
+                'femaleAttendees': location.femaleAttendees,
+                'totalPrice': location.totalPrice
+            }
+        }), 200
     else:
         return jsonify({'checked_in': False}), 200
+
 
 
 @app.route('/attend', methods=['POST'])
