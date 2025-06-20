@@ -92,9 +92,9 @@ class UserImages(db.Model):
 class LocationInfo(db.Model):
     __tablename__ = 'locationInfo'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    maxAttendees = db.Column(db.Integer)
-    maleAttendees = db.Column(db.Integer)
-    femaleAttendees = db.Column(db.Integer)
+    maxAttendees = db.Column(db.Integer, default=0)
+    maleAttendees = db.Column(db.Integer, default=0)
+    femaleAttendees = db.Column(db.Integer, default=0)
     date = db.Column(db.String(200))
     time = db.Column(db.String(20))
     location = db.Column(db.String(200))
@@ -1224,36 +1224,43 @@ def attend_location():
     user_id = data.get('user_id')
     location_id = data.get('location_id')
 
+    # Basic validation
     if not user_id or not location_id:
         return jsonify({'message': 'Missing user_id or location_id'}), 400
 
+    # Get database entries
     user = Task.query.get(user_id)
     location = LocationInfo.query.get(location_id)
     profile = UserData.query.filter_by(user_auth_id=user_id).first()
 
+    # Validate entities
     if not user or not location:
         return jsonify({'message': 'Invalid user or location'}), 404
 
     if not profile or not profile.gender:
         return jsonify({'message': 'User profile or gender not set'}), 400
 
+    # Prevent duplicate attendance
     if Attendance.query.filter_by(user_id=user_id, location_id=location_id).first():
         return jsonify({'message': 'User already marked as attending'}), 400
 
-    # Mark attendance
+    # Register attendance
     attendance = Attendance(user_id=user_id, location_id=location_id)
     db.session.add(attendance)
 
-    # Update gender-based counts
-    gender = profile.gender.lower()
+    # Update gender-based attendee count
+    gender = profile.gender.strip().lower()
     if gender == 'male':
         location.maleAttendees = (location.maleAttendees or 0) + 1
     elif gender == 'female':
         location.femaleAttendees = (location.femaleAttendees or 0) + 1
+    else:
+        return jsonify({'message': f'Unknown gender: {gender}'}), 400
 
+    # Commit the transaction
     db.session.commit()
 
-    return jsonify({'message': 'User marked as attending and counts updated'}), 200
+    return jsonify({'message': 'User marked as attending and gender count updated'}), 200
 
 
 @app.route('/attend', methods=['GET'])
