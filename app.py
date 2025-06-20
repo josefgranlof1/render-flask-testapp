@@ -10,7 +10,7 @@ from sqlalchemy import or_, and_
 from flask import request, jsonify
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp100_render_example_user:P9tyWvxLQdZYDXC6MU33skQwbsC24hmU@dpg-d1al5oh5pdvs73autcs0-a.frankfurt-postgres.render.com/wingsdatingapp100_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp101_render_example_user:cpvKBkSEsHp6NRdVcbOFjXgZR9NcUfYp@dpg-d1am9gqdbo4c73cl9a40-a.frankfurt-postgres.render.com/wingsdatingapp101_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -1218,7 +1218,6 @@ def check_checkin():
         return jsonify({'checked_in': False}), 200
 
 
-
 @app.route('/attend', methods=['POST'])
 def attend_location():
     data = request.get_json()
@@ -1230,10 +1229,11 @@ def attend_location():
 
     user = Task.query.get(user_id)
     location = LocationInfo.query.get(location_id)
-    profile = UserData.query.filter_by(user_auth_id=user_id).first()
 
     if not user or not location:
         return jsonify({'message': 'Invalid user or location'}), 404
+
+    profile = user.user_data  # Use the relationship here
 
     if not profile or not profile.gender:
         return jsonify({'message': 'User profile or gender not set'}), 400
@@ -1241,11 +1241,9 @@ def attend_location():
     if Attendance.query.filter_by(user_id=user_id, location_id=location_id).first():
         return jsonify({'message': 'User already marked as attending'}), 400
 
-    # Calculate max allowed per gender
     max_attendees = location.maxAttendees or 0
     max_per_gender = max_attendees // 2
 
-    # Gender-based logic
     gender = profile.gender.lower()
 
     if gender == 'male':
@@ -1263,13 +1261,17 @@ def attend_location():
     else:
         return jsonify({'message': 'Invalid gender value'}), 400
 
-    # Mark attendance
     attendance = Attendance(user_id=user_id, location_id=location_id)
     db.session.add(attendance)
 
-    db.session.commit()
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': 'Database error', 'error': str(e)}), 500
 
     return jsonify({'message': 'User marked as attending and counts updated'}), 200
+
 
 
 @app.route('/attend', methods=['GET'])
