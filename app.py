@@ -1251,8 +1251,6 @@ def attend_location():
     elif gender == 'female':
         location.femaleAttendees = (location.femaleAttendees or 0) + 1
 
-    location.maxAttendees = (location.maxAttendees or 0) + 1
-
     db.session.commit()
 
     return jsonify({'message': 'User marked as attending and counts updated'}), 200
