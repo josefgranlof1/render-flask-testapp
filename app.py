@@ -121,6 +121,7 @@ class CheckIn(db.Model):
     )
 
 
+
 class Attendance(db.Model):
     __tablename__ = 'attendance'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -1141,7 +1142,7 @@ def get_user_tickets():
         if not location:
             continue
 
-        checked_in = CheckIn.query.filter_by(user_id=user_id, location_id=location.id).first() is not None
+        checked_in = has_user_checked_in(user_id, location.id)
 
         tickets.append({
             'location_id': location.id,
@@ -1157,32 +1158,51 @@ def get_user_tickets():
 
     return jsonify({'tickets': tickets}), 200
 
+# ✅ Route: Perform check-in
 @app.route('/checkin', methods=['POST'])
 def checkin():
     user_id = request.json.get('user_id')
     location_id = request.json.get('location_id')
 
+    if not user_id or not location_id:
+        return jsonify({'message': 'user_id and location_id are required'}), 400
+
+    # Validate location
     location = LocationInfo.query.get(location_id)
     if not location:
         return jsonify({'message': 'Invalid location'}), 404
 
-    # Must have marked as attending
-    if not Attendance.query.filter_by(user_id=user_id, location_id=location_id).first():
+    # User must have marked attendance first
+    attendance = Attendance.query.filter_by(user_id=user_id, location_id=location_id).first()
+    if not attendance:
         return jsonify({'message': 'User must attend before check-in'}), 403
 
-    # Check-in allowed only within 20 minutes before event
-    event_time = datetime.strptime(f"{location.date} {location.time}", "%Y-%m-%d %H:%M")
-    if datetime.utcnow() < event_time - timedelta(minutes=20):
+    # Event start time
+    try:
+        event_datetime = datetime.strptime(f"{location.date} {location.time}", "%Y-%m-%d %H:%M")
+    except Exception:
+        return jsonify({'message': 'Invalid date/time format in location'}), 500
+
+    # Check-in window (within 20 minutes before event start)
+    if datetime.utcnow() < event_datetime - timedelta(minutes=20):
         return jsonify({'message': 'Check-in only allowed within 20 minutes of event start'}), 403
 
-    if CheckIn.query.filter_by(user_id=user_id, location_id=location_id).first():
+    # Check if already checked in
+    existing_checkin = CheckIn.query.filter_by(user_id=user_id, location_id=location_id).first()
+    if existing_checkin:
         return jsonify({'message': 'User already checked in'}), 400
 
+    # Create check-in
     new_checkin = CheckIn(user_id=user_id, location_id=location_id)
     db.session.add(new_checkin)
     db.session.commit()
 
-    return jsonify({'message': 'Check-in successful'}), 200
+    return jsonify({
+        'message': 'Check-in successful',
+        'user_id': user_id,
+        'location_id': location_id,
+        'timestamp': new_checkin.timestamp.isoformat()
+    }), 200
 
 
 @app.route('/checkin', methods=['GET'])
