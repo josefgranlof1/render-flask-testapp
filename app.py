@@ -10,7 +10,7 @@ from sqlalchemy import or_, and_
 from flask import request, jsonify
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp6_render_example_89l6_user:vI39HzTsrHtypgvp1fFi7uXGVZRjTUk9@dpg-d19etgfgi27c73fo3gc0-a.frankfurt-postgres.render.com/wingsdatingapp6_render_example_89l6"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp100_render_example_user:P9tyWvxLQdZYDXC6MU33skQwbsC24hmU@dpg-d1al5oh5pdvs73autcs0-a.frankfurt-postgres.render.com/wingsdatingapp100_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -1298,15 +1298,19 @@ def get_attendance():
             'checked_in': checked_in
         })
 
+    total_attendees = (location.maleAttendees or 0) + (location.femaleAttendees or 0)
+
     return jsonify({
         'location': location.location,
         'date': location.date,
         'time': location.time,
         'maleAttendees': location.maleAttendees or 0,
         'femaleAttendees': location.femaleAttendees or 0,
-        'totalAttendees': location.maxAttendees or 0,
+        'totalAttendees': total_attendees,
+        'maxAttendees': location.maxAttendees or 0,
         'attendees': attendee_list
     }), 200
+
 
 
 # USER SIGNIN METHOD
