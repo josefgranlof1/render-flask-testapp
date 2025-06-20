@@ -1229,12 +1229,10 @@ def attend_location():
 
     user = Task.query.get(user_id)
     location = LocationInfo.query.get(location_id)
+    profile = UserData.query.filter_by(user_auth_id=user_id).first()
 
     if not user or not location:
         return jsonify({'message': 'Invalid user or location'}), 404
-
-    profile = UserData.query.filter_by(user_auth_id=user_id).first()
-
 
     if not profile or not profile.gender:
         return jsonify({'message': 'User profile or gender not set'}), 400
@@ -1242,34 +1240,20 @@ def attend_location():
     if Attendance.query.filter_by(user_id=user_id, location_id=location_id).first():
         return jsonify({'message': 'User already marked as attending'}), 400
 
-    max_attendees = location.maxAttendees or 0
-    max_per_gender = max_attendees // 2
-
-    gender = profile.gender.lower()
-
-    if gender == 'male':
-        current_male = location.maleAttendees or 0
-        if current_male >= max_per_gender:
-            return jsonify({'message': 'No more male spots available'}), 400
-        location.maleAttendees = current_male + 1
-
-    elif gender == 'female':
-        current_female = location.femaleAttendees or 0
-        if current_female >= max_per_gender:
-            return jsonify({'message': 'No more female spots available'}), 400
-        location.femaleAttendees = current_female + 1
-
-    else:
-        return jsonify({'message': 'Invalid gender value'}), 400
-
+    # Mark attendance
     attendance = Attendance(user_id=user_id, location_id=location_id)
     db.session.add(attendance)
 
-    try:
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'message': 'Database error', 'error': str(e)}), 500
+    # Update gender-based counts
+    gender = profile.gender.lower()
+    if gender == 'male':
+        location.maleAttendees = (location.maleAttendees or 0) + 1
+    elif gender == 'female':
+        location.femaleAttendees = (location.femaleAttendees or 0) + 1
+
+    location.maxAttendees = (location.maxAttendees or 0) + 1
+
+    db.session.commit()
 
     return jsonify({'message': 'User marked as attending and counts updated'}), 200
 
