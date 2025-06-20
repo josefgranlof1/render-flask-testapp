@@ -1241,22 +1241,36 @@ def attend_location():
     if Attendance.query.filter_by(user_id=user_id, location_id=location_id).first():
         return jsonify({'message': 'User already marked as attending'}), 400
 
+    # Calculate max allowed per gender
+    max_attendees = location.maxAttendees or 0
+    max_per_gender = max_attendees // 2
+
+    # Gender-based logic
+    gender = profile.gender.lower()
+
+    if gender == 'male':
+        current_male = location.maleAttendees or 0
+        if current_male >= max_per_gender:
+            return jsonify({'message': 'No more male spots available'}), 400
+        location.maleAttendees = current_male + 1
+
+    elif gender == 'female':
+        current_female = location.femaleAttendees or 0
+        if current_female >= max_per_gender:
+            return jsonify({'message': 'No more female spots available'}), 400
+        location.femaleAttendees = current_female + 1
+
+    else:
+        return jsonify({'message': 'Invalid gender value'}), 400
+
     # Mark attendance
     attendance = Attendance(user_id=user_id, location_id=location_id)
     db.session.add(attendance)
 
-    # Update gender-based counts
-    gender = profile.gender.lower()
-    if gender == 'male':
-        location.maleAttendees = (location.maleAttendees or 0) + 1
-    elif gender == 'female':
-        location.femaleAttendees = (location.femaleAttendees or 0) + 1
-
-    location.maxAttendees = (location.maxAttendees or 0) + 1
-
     db.session.commit()
 
     return jsonify({'message': 'User marked as attending and counts updated'}), 200
+
 
 @app.route('/attend', methods=['GET'])
 def get_attendance():
