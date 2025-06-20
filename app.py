@@ -1233,7 +1233,8 @@ def attend_location():
     if not user or not location:
         return jsonify({'message': 'Invalid user or location'}), 404
 
-    profile = user.user_data  # Use the relationship here
+    profile = UserData.query.filter_by(user_auth_id=user_id).first()
+
 
     if not profile or not profile.gender:
         return jsonify({'message': 'User profile or gender not set'}), 400
@@ -1271,7 +1272,6 @@ def attend_location():
         return jsonify({'message': 'Database error', 'error': str(e)}), 500
 
     return jsonify({'message': 'User marked as attending and counts updated'}), 200
-
 
 
 @app.route('/attend', methods=['GET'])
