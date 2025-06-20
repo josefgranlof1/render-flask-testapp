@@ -1246,9 +1246,9 @@ def attend_location():
 
     # Update gender-based counts
     gender = profile.gender.lower()
-    if gender == 'male':
+    if gender.lower() in ['men', 'man', 'male']:
         location.maleAttendees = (location.maleAttendees or 0) + 1
-    elif gender == 'female':
+    elif gender.lower() in ['women', 'woman', 'female']:
         location.femaleAttendees = (location.femaleAttendees or 0) + 1
 
     db.session.commit()
