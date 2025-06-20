@@ -1151,11 +1151,11 @@ def get_user_tickets():
             'location': location.location,
             'checked_in': checked_in,                # Check-in status
             'maleAttendees': location.maleAttendees or 0,
-            'femaleAttendees': location.femaleAttendees or 0
+            'femaleAttendees': location.femaleAttendees or 0,
+            'maxAttendees': location.maxAttendees or 0
         })
 
     return jsonify({'tickets': tickets}), 200
-
 
 @app.route('/checkin', methods=['POST'])
 def checkin():
