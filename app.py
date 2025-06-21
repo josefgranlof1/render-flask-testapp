@@ -1199,9 +1199,8 @@ def checkin():
 
 @app.route('/checkin', methods=['GET'])
 def check_checkin():
-    data = request.get_json()
-    user_id = data.get('user_id')
-    location_id = data.get('location_id')
+    user_id = request.args.get('user_id')
+    location_id = request.args.get('location_id')
 
     if not user_id or not location_id:
         return jsonify({'message': 'Missing user_id or location_id'}), 400
