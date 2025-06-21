@@ -1161,31 +1161,23 @@ def get_user_tickets():
 # ✅ Route: Perform check-in
 @app.route('/checkin', methods=['POST'])
 def checkin():
-    user_id = request.json.get('user_id')
-    location_id = request.json.get('location_id')
+    data = request.get_json()
+    user_id = data.get('user_id')
+    location_id = data.get('location_id')
 
     if not user_id or not location_id:
         return jsonify({'message': 'user_id and location_id are required'}), 400
 
     # Validate location
+    user = Task.query.get(user_id)
     location = LocationInfo.query.get(location_id)
-    if not location:
-        return jsonify({'message': 'Invalid location'}), 404
+    if not user or not location_id:
+        return jsonify({'message': 'Invalid location or Id'}), 404
 
     # User must have marked attendance first
     attendance = Attendance.query.filter_by(user_id=user_id, location_id=location_id).first()
     if not attendance:
         return jsonify({'message': 'User must attend before check-in'}), 403
-
-    # Event start time
-    try:
-        event_datetime = datetime.strptime(f"{location.date} {location.time}", "%Y-%m-%d %H:%M")
-    except Exception:
-        return jsonify({'message': 'Invalid date/time format in location'}), 500
-
-    # Check-in window (within 20 minutes before event start)
-    if datetime.utcnow() < event_datetime - timedelta(minutes=20):
-        return jsonify({'message': 'Check-in only allowed within 20 minutes of event start'}), 403
 
     # Check if already checked in
     existing_checkin = CheckIn.query.filter_by(user_id=user_id, location_id=location_id).first()
