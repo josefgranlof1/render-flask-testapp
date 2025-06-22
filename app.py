@@ -1171,7 +1171,7 @@ def checkin():
     # Validate location
     user = Task.query.get(user_id)
     location = LocationInfo.query.get(location_id)
-    if not user or not location_id:
+    if not user or not location:
         return jsonify({'message': 'Invalid location or Id'}), 404
 
     # User must have marked attendance first
