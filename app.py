@@ -1168,13 +1168,13 @@ def checkin():
     if not user_id or not location_id:
         return jsonify({'message': 'user_id and location_id are required'}), 400
 
-    # Validate location
+    # Validate user and location
     user = Task.query.get(user_id)
     location = LocationInfo.query.get(location_id)
     if not user or not location:
-        return jsonify({'message': 'Invalid location or Id'}), 404
+        return jsonify({'message': 'Invalid location or user ID'}), 404
 
-    # User must have marked attendance first
+    # Check attendance
     attendance = Attendance.query.filter_by(user_id=user_id, location_id=location_id).first()
     if not attendance:
         return jsonify({'message': 'User must attend before check-in'}), 403
@@ -1184,17 +1184,31 @@ def checkin():
     if existing_checkin:
         return jsonify({'message': 'User already checked in'}), 400
 
-    # Create check-in
+    # Create new check-in
     new_checkin = CheckIn(user_id=user_id, location_id=location_id)
     db.session.add(new_checkin)
     db.session.commit()
 
-    return jsonify({
+    # Count how many have checked in at this location
+    checkin_count = CheckIn.query.filter_by(location_id=location_id).count()
+    max_attendees = location.max_attendees
+
+    # Prepare response
+    response = {
         'message': 'Check-in successful',
         'user_id': user_id,
         'location_id': location_id,
-        'timestamp': new_checkin.timestamp.isoformat()
-    }), 200
+        'timestamp': new_checkin.timestamp.isoformat(),
+        'checkin_status': f"{checkin_count}/{max_attendees} checked in"
+    }
+
+    # Trigger matchmaking if needed
+    if checkin_count >= max_attendees:
+        # You would replace this with your actual matchmaking logic
+        response['matchmaking'] = 'Matchmaking started'
+        # trigger_matchmaking(location_id)  # Uncomment when implemented
+
+    return jsonify(response), 200
 
 
 @app.route('/checkin', methods=['GET'])
