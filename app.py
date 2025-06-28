@@ -1223,9 +1223,18 @@ def check_checkin():
 
     if checkin:
         location = checkin.location
+
+        # Count total check-ins at this location
+        checkin_count = CheckIn.query.filter_by(location_id=location_id).count()
+        max_attendees = location.maxAttendees
+
+
+    if checkin:
+        location = checkin.location
         return jsonify({
             'checked_in': True,
             'timestamp': checkin.timestamp,
+            'checkin_status': f"{checkin_count}/{max_attendees} checked in",            
             'location': {
                 'id': location.id,
                 'location': location.location,
