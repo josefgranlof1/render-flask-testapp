@@ -1189,24 +1189,13 @@ def checkin():
     db.session.add(new_checkin)
     db.session.commit()
 
-    # Count how many have checked in at this location
-    checkin_count = CheckIn.query.filter_by(location_id=location_id).count()
-    max_attendees = location.max_attendees
-
     # Prepare response
     response = {
         'message': 'Check-in successful',
         'user_id': user_id,
         'location_id': location_id,
         'timestamp': new_checkin.timestamp.isoformat(),
-        'checkin_status': f"{checkin_count}/{max_attendees} checked in"
     }
-
-    # Trigger matchmaking if needed
-    if checkin_count >= max_attendees:
-        # You would replace this with your actual matchmaking logic
-        response['matchmaking'] = 'Matchmaking started'
-        # trigger_matchmaking(location_id)  # Uncomment when implemented
 
     return jsonify(response), 200
 
