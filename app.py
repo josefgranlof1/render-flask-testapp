@@ -1168,13 +1168,13 @@ def checkin():
     if not user_id or not location_id:
         return jsonify({'message': 'user_id and location_id are required'}), 400
 
-    # Validate user and location
+    # Validate location
     user = Task.query.get(user_id)
     location = LocationInfo.query.get(location_id)
     if not user or not location:
-        return jsonify({'message': 'Invalid location or user ID'}), 404
+        return jsonify({'message': 'Invalid location or Id'}), 404
 
-    # Check attendance
+    # User must have marked attendance first
     attendance = Attendance.query.filter_by(user_id=user_id, location_id=location_id).first()
     if not attendance:
         return jsonify({'message': 'User must attend before check-in'}), 403
@@ -1184,20 +1184,17 @@ def checkin():
     if existing_checkin:
         return jsonify({'message': 'User already checked in'}), 400
 
-    # Create new check-in
+    # Create check-in
     new_checkin = CheckIn(user_id=user_id, location_id=location_id)
     db.session.add(new_checkin)
     db.session.commit()
 
-    # Prepare response
-    response = {
+    return jsonify({
         'message': 'Check-in successful',
         'user_id': user_id,
         'location_id': location_id,
-        'timestamp': new_checkin.timestamp.isoformat(),
-    }
-
-    return jsonify(response), 200
+        'timestamp': new_checkin.timestamp.isoformat()
+    }), 200
 
 
 @app.route('/checkin', methods=['GET'])
