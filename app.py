@@ -10,7 +10,7 @@ from sqlalchemy import or_, and_
 from flask import request, jsonify
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp106_render_example_user:fjjKArIFujrDZJthx1MBCe5jp1y5eKMn@dpg-d1i3cjqli9vc73d8lqog-a.frankfurt-postgres.render.com/wingsdatingapp106_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp107_render_example_user:k2tv22tHt4FhEGm4iGFLPgn655BoayOF@dpg-d1ifa3ali9vc73fvstqg-a.frankfurt-postgres.render.com/wingsdatingapp107_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -25,10 +25,6 @@ UPLOAD_FOLDER = 'uploads/'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# Define the center coordinates and radius
-CENTER_LAT = 59.3293  # Latitude for Stockholm center
-CENTER_LNG = 18.0686  # Longitude for Stockholm center
-RADIUS = 0.03  # Radius in kilometers (approximately 30 meters)
 
 # Check if the file extension is allowed
 def allowed_file(filename):
