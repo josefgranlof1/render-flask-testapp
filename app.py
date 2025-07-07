@@ -10,7 +10,7 @@ from sqlalchemy import or_, and_
 from flask import request, jsonify
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp109_render_example_user:ZXxQV0mq4n6pEvU8IcfnGAq4P9ofa4AK@dpg-d1jrcip5pdvs73fb2150-a.frankfurt-postgres.render.com/wingsdatingapp109_render_example"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp201_render_example_user:RA4eR9FaIHeaJCfM2KQ53isf1qB79WrU@dpg-d1lq1jemcj7s73aqvb90-a.frankfurt-postgres.render.com/wingsdatingapp201_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -124,6 +124,7 @@ class Attendance(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     location_id = db.Column(db.Integer, db.ForeignKey('locationInfo.id'), nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    hasAttended = db.Column(db.Boolean, default=False)    
 
     user = db.relationship('Task', backref=db.backref('attendances', lazy=True))
     location = db.relationship('LocationInfo', backref=db.backref('attendances', lazy=True))
@@ -1257,8 +1258,8 @@ def attend_location():
     if Attendance.query.filter_by(user_id=user_id, location_id=location_id).first():
         return jsonify({'message': 'User already marked as attending'}), 400
 
-    # Mark attendance
-    attendance = Attendance(user_id=user_id, location_id=location_id)
+    # ✅ Mark attendance with hasAttended = True
+    attendance = Attendance(user_id=user_id, location_id=location_id, hasAttended=True)
     db.session.add(attendance)
 
     # Update gender-based counts
@@ -1296,7 +1297,8 @@ def get_attendance():
             'email': user.email,
             'gender': profile.gender if profile else None,
             'attending_at': attendance.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
-            'checked_in': checked_in
+            'checked_in': checked_in,
+            'hasAttended': attendance.hasAttended           
         })
 
     total_attendees = (location.maleAttendees or 0) + (location.femaleAttendees or 0)
