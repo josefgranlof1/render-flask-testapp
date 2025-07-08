@@ -1315,6 +1315,14 @@ def get_attendance():
     }), 200
 
 
+@app.route('/attendances/<int:user_id>', methods=['GET'])
+def get_user_attendance(user_id):
+    records = Attendance.query.filter_by(user_id=user_id).all()
+    attendance_map = {
+        record.location_id: record.hasAttended for record in records
+    }
+    return jsonify(attendance_map)
+
 
 # USER SIGNIN METHOD
 @app.route('/sign-in', methods=['POST'])
