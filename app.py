@@ -222,45 +222,6 @@ def set_preference():
         print(f"Error in set_preference: {str(e)}")
         return jsonify({'error': 'Internal Server Error'}), 500
     
-def is_within_location(lat, lng, center_lat, center_lng, radius):
-    """
-    Check if a user is within a specified radius of a center point.
-    """
-    lat1, lon1 = math.radians(center_lat), math.radians(center_lng)
-    lat2, lon2 = math.radians(lat), math.radians(lng)
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
-    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-    distance = 6371 * c  # Earth radius in kilometers
-    return distance <= radius / 1000  # Convert radius from meters to kilometers
-
-def get_users_in_location(center_lat, center_lng, radius):
-    """
-    Get users within a specified radius of a center point.
-    """
-    users = Task.query.filter(
-        Task.lat is not None,
-        Task.lng is not None,
-    ).all()
-    return [user for user in users if is_within_location(user.lat, user.lng, center_lat, center_lng, radius)]
-
-def shuffle_matches(center_lat, center_lng, radius, max_users):
-    """
-    Shuffle matches for users within a specified location.
-    """
-    users = get_users_in_location(center_lat, center_lng, radius)
-    if len(users) > max_users:
-        users = users[:max_users]
-    # Shuffle users
-    random.shuffle(users)
-    # Create matches
-    for i in range(0, len(users), 2):
-        if i + 1 < len(users):
-            user1 = users[i]
-            user2 = users[i + 1]
-            process_potential_match(user1.id, user2.id)
-
 
 @app.route('/matches/<email>', methods=['GET'])
 def get_user_matches(email):
@@ -268,6 +229,7 @@ def get_user_matches(email):
         user = Task.query.filter_by(email=email).first()
         if not user:
             return jsonify({'error': 'User not found'}), 404
+        
         # Get all matches for this user that are visible now
         current_time = datetime.utcnow()
         matches = Match.query.filter(
@@ -278,6 +240,7 @@ def get_user_matches(email):
             Match.status != 'deleted',
             Match.visible_after <= current_time
         ).all()
+        
         # Format the response
         result = []
         for match in matches:
@@ -285,19 +248,19 @@ def get_user_matches(email):
             other_user_id = match.user2_id if match.user1_id == user.id else match.user1_id
             other_user = Task.query.get(other_user_id)
             other_user_data = UserData.query.filter_by(user_auth_id=other_user_id).first()
+            
             if not other_user or not other_user_data:
                 continue
-            # Check if the other user is within the specified location
-            location = LocationData.query.filter_by(id=other_user_data.location_id).first()
-            if not location or not is_within_location(other_user.lat, other_user.lng, location.lat, location.lng, location.radius):
-                continue
+                
             # Get user preferences
             user_pref = UserPreference.query.filter_by(
                 user_id=user.id, preferred_user_id=other_user_id
             ).first()
+            
             other_pref = UserPreference.query.filter_by(
                 user_id=other_user_id, preferred_user_id=user.id
             ).first()
+            
             # Determine match status from user's perspective
             if match.status == 'active':
                 # Both liked each other
@@ -313,11 +276,13 @@ def get_user_matches(email):
                 else:
                     display_status = 'pending'  # Generic pending
                     show_message_button = False
+            
             # Get profile image
             user_image = UserImages.query.filter_by(user_auth_id=other_user_id).first()
             image_url = None
             if user_image and user_image.imageString:
                 image_url = request.host_url + 'uploads/' + user_image.imageString
+            
             # Add match to result
             result.append({
                 'match_id': match.id,
@@ -331,12 +296,15 @@ def get_user_matches(email):
                 'match_date': match.match_date,
                 'image_url': image_url
             })
+        
         return jsonify({'matches': result}), 200
+        
     except Exception as e:
         print(f"Error in get_user_matches: {str(e)}")
         return jsonify({'error': 'Internal Server Error'}), 500
 
 
+# Only for users that are saved for later and waiting a decision (accept or reject) inside Matches screen on frontend -> Post their decision
 @app.route('/update_match_status', methods=['POST'])
 def update_match_status():
     try:
@@ -414,18 +382,11 @@ def update_match_status():
         print(f"Error in update_match_status: {str(e)}")
         return jsonify({'error': 'Internal Server Error'}), 500
 
-
+# I changed this, be aware!
 def process_potential_match(user1_id, user2_id):
     """
     Process potential match between two users based on their preferences and location.
     """
-    user1 = Task.query.get(user1_id)
-    user2 = Task.query.get(user2_id)
-    # Check if both users are within the specified location
-    if not is_within_location(user1.lat, user1.lng, CENTER_LAT, CENTER_LNG, RADIUS) or \
-            not is_within_location(user2.lat, user2.lng, CENTER_LAT, CENTER_LNG, RADIUS):
-        return
-    # Rest of the function remains the same...
 
     # Get preferences in both directions
     pref1 = UserPreference.query.filter_by(user_id=user1_id, preferred_user_id=user2_id).first()
@@ -476,7 +437,6 @@ def process_potential_match(user1_id, user2_id):
                     visible_after=datetime.utcnow()  # Visible immediately, but pending
                 )
                 db.session.add(new_match)
-
 
 
 def get_match_score(user1_data, user2_data):
