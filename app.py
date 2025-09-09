@@ -32,16 +32,42 @@ def allowed_file(filename):
 
 class Task(db.Model):
     __tablename__ = 'userdetails'
+
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    email = db.Column(db.String(200), unique=True,nullable=False)
+    email = db.Column(db.String(200), unique=True, nullable=False)
     password = db.Column(db.String, nullable=False)
+
+    # Relationships with cascade
+    user_data = db.relationship('UserData', backref='user', uselist=False, cascade="all, delete-orphan")
+    relationship_data = db.relationship('RelationshipData', backref='user', cascade="all, delete-orphan")
+    user_images = db.relationship('UserImages', backref='user', cascade="all, delete-orphan")
+    checkins = db.relationship('CheckIn', backref='user', cascade="all, delete-orphan")
+    attendances = db.relationship('Attendance', backref='user', cascade="all, delete-orphan")
+
+    # Messages
+    sent_messages = db.relationship('Message', foreign_keys='Message.sender_id',
+                                    cascade="all, delete-orphan")
+    received_messages = db.relationship('Message', foreign_keys='Message.receiver_id',
+                                        cascade="all, delete-orphan")
+
+    # Preferences
+    preferences = db.relationship('UserPreference', foreign_keys='UserPreference.user_id',
+                                  cascade="all, delete-orphan")
+    preferred_by = db.relationship('UserPreference', foreign_keys='UserPreference.preferred_user_id',
+                                   cascade="all, delete-orphan")
+
+    # Matches
+    matches_as_user1 = db.relationship('Match', foreign_keys='Match.user1_id',
+                                       cascade="all, delete-orphan")
+    matches_as_user2 = db.relationship('Match', foreign_keys='Match.user2_id',
+                                       cascade="all, delete-orphan")
 
 
 class Message(db.Model):
     __tablename__ = 'messages'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    sender_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
-    receiver_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
+    sender_id = db.Column(db.Integer, db.ForeignKey('userdetails.id', ondelete="CASCADE"), nullable=False)
+    receiver_id = db.Column(db.Integer, db.ForeignKey('userdetails.id', ondelete="CASCADE"), nullable=False)
     message = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -52,7 +78,7 @@ class Message(db.Model):
 class UserData(db.Model):
     __tablename__ = 'userdata'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
+    user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id', ondelete="CASCADE"), nullable=False)
 
     firstname = db.Column(db.String(255))
     lastname = db.Column(db.String(255))
@@ -69,7 +95,7 @@ class UserData(db.Model):
 class RelationshipData(db.Model):
     __tablename__ = 'relationshipData'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
+    user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id', ondelete="CASCADE"), nullable=False)
     email = db.Column(db.String(200))
     lookingfor = db.Column(db.String(255))
     openfor = db.Column(db.String(255))
@@ -79,7 +105,7 @@ class RelationshipData(db.Model):
 class UserImages(db.Model):
     __tablename__ = 'userImage'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
+    user_auth_id = db.Column(db.Integer, db.ForeignKey('userdetails.id', ondelete="CASCADE"), nullable=False)
     email = db.Column(db.String(200))  # Ensure this column exists
     imageString = db.Column(db.String())
     user = db.relationship('Task', backref=db.backref('user_image', lazy=True))
@@ -105,7 +131,7 @@ class CheckIn(db.Model):
     __tablename__ = 'checkins'
     
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('userdetails.id', ondelete="CASCADE"), nullable=False)
     location_id = db.Column(db.Integer, db.ForeignKey('locationInfo.id'), nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -121,7 +147,7 @@ class CheckIn(db.Model):
 class Attendance(db.Model):
     __tablename__ = 'attendance'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('userdetails.id', ondelete="CASCADE"), nullable=False)
     location_id = db.Column(db.Integer, db.ForeignKey('locationInfo.id'), nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     hasAttended = db.Column(db.Boolean, default=False)    
@@ -138,8 +164,8 @@ class Attendance(db.Model):
 class UserPreference(db.Model):
     __tablename__ = 'user_preference'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
-    preferred_user_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('userdetails.id', ondelete="CASCADE"), nullable=False)
+    preferred_user_id = db.Column(db.Integer, db.ForeignKey('userdetails.id', ondelete="CASCADE"), nullable=False)
     preference = db.Column(db.String(20), nullable=False)  # 'like', 'reject', 'save_later'
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     
@@ -150,8 +176,8 @@ class UserPreference(db.Model):
 class Match(db.Model):
     __tablename__ = 'matches'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user1_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
-    user2_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
+    user1_id = db.Column(db.Integer, db.ForeignKey('userdetails.id', ondelete="CASCADE"), nullable=False)
+    user2_id = db.Column(db.Integer, db.ForeignKey('userdetails.id', ondelete="CASCADE"), nullable=False)
     match_date = db.Column(db.DateTime, default=datetime.utcnow)
     visible_after = db.Column(db.DateTime)
     status = db.Column(db.String(20), default='pending')  # 'pending', 'active', 'deleted'
@@ -165,6 +191,31 @@ with app.app_context():
     
 
 # API Endpoints
+
+
+@app.route('/delete_user', methods=['DELETE'])
+def delete_user():
+    data = request.get_json()
+
+    user_id = data.get('id')
+
+    user = Task.query.get(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    try:
+        db.session.delete(user)   # cascade deletes everything linked
+        db.session.commit()
+        return jsonify({"message": "User and related data deleted successfully"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+if __name__ == "__main__":
+    with app.app_context():
+        db.create_all()  # ensure tables exist
+    app.run(debug=True)
 
 def has_user_checked_in(user_id, location_id):
     return db.session.query(CheckIn).filter_by(user_id=user_id, location_id=location_id).first() is not None
