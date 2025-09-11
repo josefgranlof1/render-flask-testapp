@@ -1,5 +1,8 @@
+import random
 from datetime import datetime
 import re
+from email.policy import default
+
 from flask import Flask, jsonify, request, session,send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO, join_room, send, emit
@@ -97,7 +100,7 @@ class LocationInfo(db.Model):
     lat = db.Column(db.Float)
     lng = db.Column(db.Float)
     totalPrice = db.Column(db.Integer)
-    
+    checkin_closed = db.Column(db.Boolean, default=False)  # Work: 41410282
     event_type = db.Column(db.String(100))  # e.g. "Music", "DJ Night", "Live Band"   
 
 
@@ -608,7 +611,9 @@ def match_all_users():
         
         # Initialize results dictionary
         matches = {}
-        
+
+        used_users = set() # Track who is already matched # Work: 41410282
+
         # Get all existing matches and preferences
         existing_matches = Match.query.all()
         existing_preferences = UserPreference.query.all()
@@ -634,18 +639,24 @@ def match_all_users():
         # Map genders to opposite genders
         opposite_genders = {
             "men": "women",
-            "man": "women",
-            "male": "women",
+            "man": "woman",
+            "male": "female",
             "women": "men",
-            "woman": "men",
-            "female": "men"
+            "woman": "man",
+            "female": "male"
         }
         
         # Process each user
         for user in all_users:
+
+            # Old logic to skip
             # Skip if user already has matches in the result
-            if user.user_auth_id in matches:
-                continue
+            # if user.user_auth_id in matches:
+            #    continue
+
+            # # Skip if user already has matches in the result
+            if user.user_auth_id in used_users: # Work: 41410282
+                continue # Work: 41410282
                 
             user_gender = user.gender.lower() if user.gender else "unknown"
             
@@ -699,7 +710,11 @@ def match_all_users():
                     'score': best_score,
                     'image_url': user_image_url
                 }
-                
+
+                # Mark both as used # Work: 41410282
+                used_users.add(user.user_auth_id) # Work: 41410282
+                used_users.add(best_match.user_auth_id) # Work: 41410282
+
                 # Mark this pair as matched to avoid duplicates
                 matched_pairs.add((user.user_auth_id, best_match.user_auth_id))
                 matched_pairs.add((best_match.user_auth_id, user.user_auth_id))
@@ -734,6 +749,46 @@ def home():
         {'id': task.id, 'email': task.email, 'password': task.password} for task in tasks
     ]
     return jsonify({"user_details": task_list})
+
+
+
+@app.route('/create_all', methods=['POST'])
+def mass_create_users():
+    try:
+        data = request.get_json()
+        user_details = data.get('user_details')
+
+        if not user_details:
+            return jsonify({'error': 'List required'}), 400
+
+        for user in user_details:
+            new_email = user.get('email')
+            new_password = user.get('password')
+
+            if not new_email or not new_password:
+                continue
+
+            # Validate email format
+            email_regex = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
+            if not re.match(email_regex, new_email):
+                continue
+
+            # Check if the email already exists
+            existing_user = Task.query.filter_by(email=new_email).first()
+            if existing_user:
+                continue
+
+            # Create new user
+            newUserDetails = Task(email=new_email, password=new_password)
+            db.session.add(newUserDetails)
+            db.session.commit()
+
+        return jsonify({'message': "New Users added"}), 201
+
+    except Exception as e:
+        print(e)
+        return jsonify({'error': 'Internal Server Error'}), 500
+
 
 # POST USER CREDENTIALS TO DATABASE
 @app.route('/users', methods=['POST'])
@@ -1061,6 +1116,27 @@ def get_relationship_data():
     ]
     return jsonify(data)
 
+@app.route('/locationInfo', methods=['POST'])
+def postLocationInfo():
+    data = request.get_json()
+
+    # Create new location
+    newLocationDetails = LocationInfo(
+        maxAttendees=data.get('maxAttendees'),
+        maleAttendees = 0,
+        femaleAttendees = 0,
+        date = data.get('date'),
+        time = data.get('time'),
+        location = data.get('location'),
+        lat = data.get('lat'),
+        lng = data.get('lng'),
+        totalPrice = data.get('totalPrice'),
+        event_type = data.get('event_type')
+    )
+    db.session.add(newLocationDetails)
+    db.session.commit()
+    return jsonify({'message': "New Location added"}), 201
+
 
 @app.route('/locationInfo', methods=['GET'])
 def getLocationInfo():
@@ -1141,9 +1217,16 @@ def checkin():
     if existing_checkin:
         return jsonify({'message': 'User already checked in'}), 400
 
+    # Validate if check-in already closed for this location # Work: 41410282
+    if location.checkin_closed: # Work: 41410282
+        return jsonify({'message': 'Check-in is closed for this event'}), 400 # Work: 41410282
+
     # Slot Limit Enforcement
     checkin_count = CheckIn.query.filter_by(location_id=location_id).count()
-    if checkin_count >= location.maxAttendees:
+    if checkin_count >= location.maxAttendees and not location.checkin_closed: # Checks for the limit and if checkin is not closed to avoid duplicate matches
+        location.checkin_closed = True # Work: 41410282
+        db.session.commit() # Work: 41410282
+        trigger_matchmaking_for_location(location_id) # Work: 41410282
         return jsonify({'message': f'All {location.maxAttendees} slots are filled'}), 400
 
     # Time-Based Restrictions (10 minutes after event time)
@@ -1152,6 +1235,8 @@ def checkin():
         current_time = datetime.now()
         time_diff = (current_time - event_time).total_seconds()
         if time_diff > 600:
+            location.checkin_closed = True # Work: 41410282
+            db.session.commit() # Work: 41410282
             # Trigger matchmaking when time expires (even if slots aren't full)
             trigger_matchmaking_for_location(location_id)
             return jsonify({'message': 'Check-in period has ended (10 minutes after event time)'}), 400
@@ -1166,6 +1251,8 @@ def checkin():
     # Check if this check-in completes the slots or triggers end phase
     updated_checkin_count = CheckIn.query.filter_by(location_id=location_id).count()
     if updated_checkin_count >= location.maxAttendees:
+        location.checkin_closed = True  # Work: 41410282
+        db.session.commit()  # Work: 41410282
         # All slots filled - trigger automatic matchmaking
         trigger_matchmaking_for_location(location_id)
 
