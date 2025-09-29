@@ -56,6 +56,23 @@ class Message(db.Model):
     sender = db.relationship('Task', foreign_keys=[sender_id], backref=db.backref('sent_messages', lazy=True))
     receiver = db.relationship('Task', foreign_keys=[receiver_id], backref=db.backref('received_messages', lazy=True))
     reply_to = db.relationship('Message', remote_side=[id], backref=db.backref('replies', lazy=True))
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "sender_id": self.sender_id,
+            "receiver_id": self.receiver_id,
+            "message": self.message,
+            "timestamp": self.timestamp.isoformat(),
+            "image_url": self.image_url,
+            "reply_to_id": self.reply_to_id,
+            # Optional: include some info about the replied-to message
+            "reply_to": {
+                "id": self.reply_to.id,
+                "message": self.reply_to.message,
+                "sender_id": self.reply_to.sender_id
+            } if self.reply_to else None
+        }
 
 
 class UserData(db.Model):
@@ -1715,7 +1732,7 @@ def send_message():
             filename = secure_filename(file.filename)
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
             image_url = f'/static/uploads/{filename}'
-
+            
 
     # Check if any of the fields are missing
     if not sender_email or not receiver_email or not message:
@@ -1822,6 +1839,12 @@ def get_chats():
             'message': msg.message,
             'image_url': msg.image_url,
             'reply_to_id': msg.reply_to_id,
+            'reply_to': {
+                'id': msg.reply_to.id,
+                'message': msg.reply_to.message,
+                'sender_id': msg.reply_to.sender_id,
+                'sender_email': user1.email if msg.reply_to.sender_id == user1.id else user2.email
+        } if msg.reply_to else None,
             'timestamp': msg.timestamp
         }
         for msg in messages
