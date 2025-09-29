@@ -1728,7 +1728,7 @@ def send_message():
     if not sender or not receiver:
         return jsonify({'error': 'Sender or receiver not found'}), 404
 
-    new_message = Message(sender_id=sender.id, receiver_id=receiver.id, message=message, image_url=image_url, reply_to_id=reply_to_id.id)
+    new_message = Message(sender_id=sender.id, receiver_id=receiver.id, message=message, image_url=image_url, reply_to_id=reply_to_id)
     db.session.add(new_message)
     db.session.commit()
     
