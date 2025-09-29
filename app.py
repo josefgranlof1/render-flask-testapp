@@ -14,7 +14,7 @@ from flask import request, jsonify
 
 app = Flask(__name__)
 app.config[
-    'SQLALCHEMY_DATABASE_URI'] = "postgresql://wingsdatingapp601_render_example_user:K79htwuyKXa0txjUqKIaR1whu3gSqwl7@dpg-d3ba64ripnbc73fn3bq0-a.frankfurt-postgres.render.com/wingsdatingapp601_render_example"
+    'SQLALCHEMY_DATABASE_URI'] = "postgresql://josefgranlof_flask_render_app1_user:C0kkch5lXBiLvsaavUbPW8r1AhIagU6x@dpg-d3d6p92li9vc73e5o8bg-a.frankfurt-postgres.render.com/josefgranlof_flask_render_app1"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -47,11 +47,18 @@ class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     sender_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     receiver_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
-    message = db.Column(db.Text, nullable=False)
+    
+    message = db.Column(db.Text, nullable=True)  # Text message (optional if only image)
+    image_url = db.Column(db.String(255), nullable=True)  # URL or path to uploaded image
+    
+    reply_to_id = db.Column(db.Integer, db.ForeignKey('messages.id'), nullable=True)  # Reference to original message
+    
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
-    sender = db.relationship('Task', foreign_keys=[sender_id], backref=db.backref('sent_messages', lazy=True))
-    receiver = db.relationship('Task', foreign_keys=[receiver_id], backref=db.backref('received_messages', lazy=True))
+    # Relationships
+    sender = db.relationship('UserDetails', foreign_keys=[sender_id], backref=db.backref('sent_messages', lazy=True))
+    receiver = db.relationship('UserDetails', foreign_keys=[receiver_id], backref=db.backref('received_messages', lazy=True))
+    reply_to = db.relationship('Message', remote_side=[id], backref=db.backref('replies', lazy=True))
 
 
 class UserData(db.Model):
@@ -1700,59 +1707,109 @@ def get_signin_data():
 def send_message():
     sender_email = request.form.get('sender_email')
     receiver_email = request.form.get('receiver_email')
-    message = request.form.get('message')
+    message_text = request.form.get('message')  # optional now
+    reply_to_id = request.form.get('reply_to_id')  # optional
 
-    # Check if any of the fields are missing
-    if not sender_email or not receiver_email or not message:
-        return jsonify({'error': 'Missing data'}), 400
-
-    # Look up user IDs based on emails
+    # Look up sender and receiver
     sender = Task.query.filter_by(email=sender_email).first()
     receiver = Task.query.filter_by(email=receiver_email).first()
-
     if not sender or not receiver:
         return jsonify({'error': 'Sender or receiver not found'}), 404
 
-    # Store the message in the database
-    new_message = Message(sender_id=sender.id, receiver_id=receiver.id, message=message)
+    # Handle image upload
+    image_url = None
+    if 'image' in request.files:
+        file = request.files['image']
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(file_path)
+            image_url = f'/static/uploads/{filename}'
+
+    # Check if either message text or image is provided
+    if not message_text and not image_url:
+        return jsonify({'error': 'Message text or image required'}), 400
+
+    # Create and store the message
+    new_message = Message(
+        sender_id=sender.id,
+        receiver_id=receiver.id,
+        message=message_text,
+        image_url=image_url,
+        reply_to_id=reply_to_id
+    )
     db.session.add(new_message)
     db.session.commit()
 
-    # Emit the message to the receiver's room using receiver's email
+    # Emit the message to the receiver
     socketio.emit('receive_message', {
+        'id': new_message.id,
         'sender_email': sender_email,
         'receiver_email': receiver_email,
-        'message': message
+        'message': message_text,
+        'image_url': image_url,
+        'reply_to_id': reply_to_id
     }, room=receiver_email)
 
-    return jsonify({'status': 'Message sent'})
+    return jsonify({'status': 'Message sent', 'message_id': new_message.id})
 
 
 @socketio.on('send_message')
 def handle_message(data):
-    sender_email = data['sender_email']
-    receiver_email = data['receiver_email']
-    message = data['message']
+    sender_email = data.get('sender_email')
+    receiver_email = data.get('receiver_email')
+    message_text = data.get('message')  # optional now
+    reply_to_id = data.get('reply_to_id')  # optional
+    image_data = data.get('image')  # optional, can be a base64 string or file path
 
-    # Look up user IDs based on emails
+    # Look up sender and receiver
     sender = Task.query.filter_by(email=sender_email).first()
     receiver = Task.query.filter_by(email=receiver_email).first()
-
     if not sender or not receiver:
         emit('error', {'error': 'Sender or receiver not found'})
         return
 
-    # Store the message in the database
-    new_message = Message(sender_id=sender.id, receiver_id=receiver.id, message=message)
+    # Handle image upload (if sent as base64 string)
+    image_url = None
+    if image_data:
+        import base64
+        from datetime import datetime
+        # Assuming image_data is a base64 string like "data:image/png;base64,AAA..."
+        header, encoded = image_data.split(',', 1)
+        file_ext = header.split('/')[1].split(';')[0]  # extract extension
+        filename = f"{datetime.utcnow().timestamp()}.{file_ext}"
+        file_path = os.path.join('static/uploads', filename)
+        with open(file_path, 'wb') as f:
+            f.write(base64.b64decode(encoded))
+        image_url = f'/static/uploads/{filename}'
+
+    # Make sure there is either text or image
+    if not message_text and not image_url:
+        emit('error', {'error': 'Message text or image required'})
+        return
+
+    # Store the message
+    new_message = Message(
+        sender_id=sender.id,
+        receiver_id=receiver.id,
+        message=message_text,
+        image_url=image_url,
+        reply_to_id=reply_to_id
+    )
     db.session.add(new_message)
     db.session.commit()
 
-    # Emit the message to the receiver's room using receiver's email
+    # Emit message to receiver
     emit('receive_message', {
+        'id': new_message.id,
         'sender_email': sender_email,
         'receiver_email': receiver_email,
-        'message': message
+        'message': message_text,
+        'image_url': image_url,
+        'reply_to_id': reply_to_id,
+        'timestamp': new_message.timestamp.isoformat()
     }, room=receiver_email)
+
 
 
 @socketio.on('join')
@@ -1776,33 +1833,36 @@ def get_chats():
     if not email1 or not email2:
         return jsonify({'error': 'Missing email addresses'}), 400
 
-    # Retrieve user IDs based on the provided emails
+    # Retrieve user IDs
     user1 = Task.query.filter_by(email=email1).first()
     user2 = Task.query.filter_by(email=email2).first()
-
     if not user1 or not user2:
         return jsonify({'error': 'One or both users not found'}), 404
 
-    # Fetch the chat history between the two users
+    # Fetch messages between the two users
     messages = Message.query.filter(
         ((Message.sender_id == user1.id) & (Message.receiver_id == user2.id)) |
         ((Message.sender_id == user2.id) & (Message.receiver_id == user1.id))
     ).order_by(Message.timestamp).all()
 
-    # Prepare the chat history for response, adding sender and receiver emails
+    # Prepare chat history with images and reply info
     chat_history = [
         {
+            'id': msg.id,
             'sender_id': msg.sender_id,
             'sender_email': user1.email if msg.sender_id == user1.id else user2.email,
             'receiver_id': msg.receiver_id,
             'receiver_email': user2.email if msg.receiver_id == user2.id else user1.email,
             'message': msg.message,
-            'timestamp': msg.timestamp
+            'image_url': msg.image_url,        # include image if present
+            'reply_to_id': msg.reply_to_id,    # include reply reference
+            'timestamp': msg.timestamp.isoformat()
         }
         for msg in messages
     ]
 
     return jsonify(chat_history)
+
 
 
 if __name__ == '__main__':
