@@ -13,8 +13,7 @@ from sqlalchemy import or_, and_
 from flask import request, jsonify
 
 app = Flask(__name__)
-app.config[
-    'SQLALCHEMY_DATABASE_URI'] = "postgresql://wings_render_example1_user:n2eUQzZNHM258Itc9WmvpzGM1Kfn3e0j@dpg-d3daa7ogjchc739s4t7g-a.frankfurt-postgres.render.com/wings_render_example1"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://wings1000_render_example_user:AN1Unt7Zus11lrcU9k5yECnWERw8qEhA@dpg-d3dbn2jipnbc73fejrp0-a.frankfurt-postgres.render.com/wings1000_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
