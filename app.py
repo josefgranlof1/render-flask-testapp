@@ -49,9 +49,13 @@ class Message(db.Model):
     receiver_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     message = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    image_url = db.Column(db.String(255), nullable=True)
+    reply_to_id = db.Column(db.Integer, db.ForeignKey('messages.id'), nullable=True)
 
     sender = db.relationship('Task', foreign_keys=[sender_id], backref=db.backref('sent_messages', lazy=True))
     receiver = db.relationship('Task', foreign_keys=[receiver_id], backref=db.backref('received_messages', lazy=True))
+    reply_to = db.relationship('Message', remote_side=[id], backref=db.backref('replies', lazy=True))
 
 
 class UserData(db.Model):
@@ -1700,7 +1704,18 @@ def get_signin_data():
 def send_message():
     sender_email = request.form.get('sender_email')
     receiver_email = request.form.get('receiver_email')
-    message = request.form.get('message')
+    message = request.form.get('message')    
+    image_url = request.form.get('image_url')
+    reply_to_id = request.form.get('reply_to_id')  # optional
+
+    image_url = None
+    if 'image' in request.files:
+        file = request.files['image']
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            image_url = f'/static/uploads/{filename}'
+
 
     # Check if any of the fields are missing
     if not sender_email or not receiver_email or not message:
@@ -1713,18 +1728,20 @@ def send_message():
     if not sender or not receiver:
         return jsonify({'error': 'Sender or receiver not found'}), 404
 
-    # Store the message in the database
-    new_message = Message(sender_id=sender.id, receiver_id=receiver.id, message=message)
+    new_message = Message(sender_id=sender.id, receiver_id=receiver.id, message=message, image_url=image_url, reply_to_id=reply_to_id.id)
     db.session.add(new_message)
     db.session.commit()
-
-    # Emit the message to the receiver's room using receiver's email
+    
+        # Emit the message to the receiver's room using receiver's email
     socketio.emit('receive_message', {
         'sender_email': sender_email,
         'receiver_email': receiver_email,
-        'message': message
+        'message': message,
+        'image_url': image_url,
+        'reply_to_id': reply_to_id,
+        
     }, room=receiver_email)
-
+    
     return jsonify({'status': 'Message sent'})
 
 
@@ -1733,7 +1750,10 @@ def handle_message(data):
     sender_email = data['sender_email']
     receiver_email = data['receiver_email']
     message = data['message']
-
+    image_url = request.form.get('image_url')
+    reply_to_id = request.form.get('reply_to_id')  # optional
+    
+    
     # Look up user IDs based on emails
     sender = Task.query.filter_by(email=sender_email).first()
     receiver = Task.query.filter_by(email=receiver_email).first()
@@ -1743,7 +1763,7 @@ def handle_message(data):
         return
 
     # Store the message in the database
-    new_message = Message(sender_id=sender.id, receiver_id=receiver.id, message=message)
+    new_message = Message(sender_id=sender.id, receiver_id=receiver.id, message=message, image_url=image_url, reply_to_id=reply_to_id)
     db.session.add(new_message)
     db.session.commit()
 
@@ -1751,7 +1771,10 @@ def handle_message(data):
     emit('receive_message', {
         'sender_email': sender_email,
         'receiver_email': receiver_email,
-        'message': message
+        'message': message,
+        'image_url': image_url,
+        'reply_to_id': reply_to_id
+        
     }, room=receiver_email)
 
 
@@ -1797,6 +1820,8 @@ def get_chats():
             'receiver_id': msg.receiver_id,
             'receiver_email': user2.email if msg.receiver_id == user2.id else user1.email,
             'message': msg.message,
+            'image_url': msg.image_url,
+            'reply_to_id': msg.reply_to_id,
             'timestamp': msg.timestamp
         }
         for msg in messages
