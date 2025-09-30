@@ -1774,15 +1774,34 @@ def handle_message(data):
     # Look up user IDs based on emails
     sender = Task.query.filter_by(email=sender_email).first()
     receiver = Task.query.filter_by(email=receiver_email).first()
+    
 
     if not sender or not receiver:
         emit('error', {'error': 'Sender or receiver not found'})
         return
 
     # Store the message in the database
-    new_message = Message(sender_id=sender.id, receiver_id=receiver.id, message=message, image_url=image_url, reply_to_id=reply_to_id)
+    new_message = Message(
+        sender_id=sender.id, 
+        receiver_id=receiver.id, 
+        message=message, 
+        image_url=image_url, 
+        reply_to_id=reply_to_id
+        )
+    
     db.session.add(new_message)
     db.session.commit()
+    
+    reply_obj = None
+    if reply_to_id:
+        original_msg = Message.query.get(reply_to_id)
+    if original_msg:
+        original_sender = Task.query.get(original_msg.sender_id)
+        reply_obj = {
+            'id': original_msg.id,
+            'message': original_msg.message,
+            'sender_email': original_sender.email if original_sender else ""
+        }
 
     # Emit the message to the receiver's room using receiver's email
     emit('receive_message', {
@@ -1790,7 +1809,8 @@ def handle_message(data):
         'receiver_email': receiver_email,
         'message': message,
         'image_url': image_url,
-        'reply_to_id': reply_to_id
+        'reply_to_id': reply_to_id,
+        'reply_to': reply_obj
         
     }, room=receiver_email)
 
