@@ -14,7 +14,7 @@ from flask import request, jsonify
 
 app = Flask(__name__)
 app.config[
-    'SQLALCHEMY_DATABASE_URI'] = "postgresql://wingstestapp100_render_example_user:kjQJdiIwjv8sXdG1R9LkHkGpho4oagAS@dpg-d3e29nb3fgac73fqcetg-a.frankfurt-postgres.render.com/wingstestapp100_render_example"
+    'SQLALCHEMY_DATABASE_URI'] = "postgresql://wingit200_render_example_user:J6fqm72YcW9id9bFVLV5NTY0Lp1IhMwo@dpg-d3e2fo3e5dus73fctlj0-a.frankfurt-postgres.render.com/wingit200_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -56,23 +56,6 @@ class Message(db.Model):
     sender = db.relationship('Task', foreign_keys=[sender_id], backref=db.backref('sent_messages', lazy=True))
     receiver = db.relationship('Task', foreign_keys=[receiver_id], backref=db.backref('received_messages', lazy=True))
     reply_to = db.relationship('Message', remote_side=[id], backref=db.backref('replies', lazy=True))
-    
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "sender_id": self.sender_id,
-            "receiver_id": self.receiver_id,
-            "message": self.message,
-            "timestamp": self.timestamp.isoformat(),
-            "image_url": self.image_url,
-            "reply_to_id": self.reply_to_id,
-            # Optional: include some info about the replied-to message
-            "reply_to": {
-                "id": self.reply_to.id,
-                "message": self.reply_to.message,
-                "sender_id": self.reply_to.sender_id
-            } if self.reply_to else None
-        }
 
 
 class UserData(db.Model):
