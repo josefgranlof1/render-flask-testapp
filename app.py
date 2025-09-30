@@ -1750,8 +1750,8 @@ def handle_message(data):
     sender_email = data['sender_email']
     receiver_email = data['receiver_email']
     message = data['message']
-    image_url = request.form.get('image_url')
-    reply_to_id = request.form.get('reply_to_id')  # optional
+    image_url = data['image_url']
+    reply_to_id = data['reply_to_id']
     
     
     # Look up user IDs based on emails
