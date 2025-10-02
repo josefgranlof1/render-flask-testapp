@@ -1759,7 +1759,7 @@ def handle_message(data):
     receiver_email = data['receiver_email']
     message = data['message']
     reply_to_id = data['reply_to_id']
-    
+    reply_obj = data['reply_obj']
     
     # Look up user IDs based on emails
     sender = Task.query.filter_by(email=sender_email).first()
