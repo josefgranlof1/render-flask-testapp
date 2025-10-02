@@ -1703,20 +1703,18 @@ def send_message():
     sender_email = request.form.get('sender_email')
     receiver_email = request.form.get('receiver_email')
     message = request.form.get('message')
-    reply_to_id = request.form.get('reply_to_id')  # optional
+    reply_to_id = request.form.get('reply_to_id')
+    reply_to_id = int(reply_to_id) if reply_to_id else None  # ✅ ensure int
 
-    # Check if any of the fields are missing
     if not sender_email or not receiver_email or not message:
         return jsonify({'error': 'Missing data'}), 400
 
-    # Look up user IDs based on emails
     sender = Task.query.filter_by(email=sender_email).first()
     receiver = Task.query.filter_by(email=receiver_email).first()
 
     if not sender or not receiver:
         return jsonify({'error': 'Sender or receiver not found'}), 404
 
-    # Build reply object if replying
     reply_obj = None
     if reply_to_id:
         original_msg = Message.query.get(reply_to_id)
@@ -1728,7 +1726,6 @@ def send_message():
                 'sender_email': original_sender.email if original_sender else ""
             }
 
-    # Store message in DB
     new_message = Message(
         sender_id=sender.id,
         receiver_id=receiver.id,
@@ -1738,8 +1735,8 @@ def send_message():
     db.session.add(new_message)
     db.session.commit()
 
-    # Emit the message to the receiver's room
     socketio.emit('receive_message', {
+        'id': new_message.id,
         'sender_email': sender_email,
         'receiver_email': receiver_email,
         'message': message,
@@ -1749,9 +1746,11 @@ def send_message():
 
     return jsonify({
         'status': 'Message sent',
+        'id': new_message.id,
         'reply_to_id': reply_to_id,
         'reply_to': reply_obj
     })
+
 
 
 @socketio.on('send_message')
