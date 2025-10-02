@@ -49,8 +49,6 @@ class Message(db.Model):
     receiver_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     message = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    image_url = db.Column(db.String(255), nullable=True)
     reply_to_id = db.Column(db.Integer, db.ForeignKey('messages.id'), nullable=True)
 
     sender = db.relationship('Task', foreign_keys=[sender_id], backref=db.backref('sent_messages', lazy=True))
@@ -1705,18 +1703,8 @@ def send_message():
     sender_email = request.form.get('sender_email')
     receiver_email = request.form.get('receiver_email')
     message = request.form.get('message')    
-    image_url = request.form.get('image_url')
     reply_to_id = request.form.get('reply_to_id')  # optional
-
-    image_url = None
-    if 'image' in request.files:
-        file = request.files['image']
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            image_url = f'/static/uploads/{filename}'
-            
-
+       
     # Check if any of the fields are missing
     if not sender_email or not receiver_email or not message:
         return jsonify({'error': 'Missing data'}), 400
@@ -1724,56 +1712,6 @@ def send_message():
     # Look up user IDs based on emails
     sender = Task.query.filter_by(email=sender_email).first()
     receiver = Task.query.filter_by(email=receiver_email).first()
-
-    if not sender or not receiver:
-        return jsonify({'error': 'Sender or receiver not found'}), 404
-
-    new_message = Message(sender_id=sender.id, receiver_id=receiver.id, message=message, image_url=image_url, reply_to_id=reply_to_id)
-    db.session.add(new_message)
-    db.session.commit()
-    
-        # Emit the message to the receiver's room using receiver's email
-    socketio.emit('receive_message', {
-        'sender_email': sender_email,
-        'receiver_email': receiver_email,
-        'message': message,
-        'image_url': image_url,
-        'reply_to_id': reply_to_id,
-        
-    }, room=receiver_email)
-    
-    return jsonify({'status': 'Message sent'})
-
-
-@socketio.on('send_message')
-def handle_message(data):
-    sender_email = data['sender_email']
-    receiver_email = data['receiver_email']
-    message = data['message']
-    image_url = data['image_url']
-    reply_to_id = data['reply_to_id']
-    
-    
-    # Look up user IDs based on emails
-    sender = Task.query.filter_by(email=sender_email).first()
-    receiver = Task.query.filter_by(email=receiver_email).first()
-    
-
-    if not sender or not receiver:
-        emit('error', {'error': 'Sender or receiver not found'})
-        return
-
-    # Store the message in the database
-    new_message = Message(
-        sender_id=sender.id, 
-        receiver_id=receiver.id, 
-        message=message, 
-        image_url=image_url, 
-        reply_to_id=reply_to_id
-        )
-    
-    db.session.add(new_message)
-    db.session.commit()
     
     reply_obj = None
     if reply_to_id:
@@ -1786,12 +1724,73 @@ def handle_message(data):
             'sender_email': original_sender.email if original_sender else ""
         }
 
+
+    if not sender or not receiver:
+        return jsonify({'error': 'Sender or receiver not found'}), 404
+
+    new_message = Message(sender_id=sender.id, receiver_id=receiver.id, message=message, reply_to_id=reply_to_id, reply_obj=reply_obj)
+    db.session.add(new_message)
+    db.session.commit()
+    
+        # Emit the message to the receiver's room using receiver's email
+    socketio.emit('receive_message', {
+        'sender_email': sender_email,
+        'receiver_email': receiver_email,
+        'message': message,
+        'reply_to_id': reply_to_id,
+        'reply_to': reply_obj
+
+    }, room=receiver_email)
+    
+    return jsonify({'status': 'Message sent'})
+
+
+@socketio.on('send_message')
+def handle_message(data):
+    sender_email = data['sender_email']
+    receiver_email = data['receiver_email']
+    message = data['message']
+    reply_to_id = data['reply_to_id']
+    
+    
+    # Look up user IDs based on emails
+    sender = Task.query.filter_by(email=sender_email).first()
+    receiver = Task.query.filter_by(email=receiver_email).first()
+    
+
+    if not sender or not receiver:
+        emit('error', {'error': 'Sender or receiver not found'})
+        return
+    
+        reply_obj = None
+    if reply_to_id:
+        original_msg = Message.query.get(reply_to_id)
+    if original_msg:
+        original_sender = Task.query.get(original_msg.sender_id)
+        reply_obj = {
+            'id': original_msg.id,
+            'message': original_msg.message,
+            'sender_email': original_sender.email if original_sender else ""
+        }
+
+    # Store the message in the database
+    new_message = Message(
+        sender_id=sender.id, 
+        receiver_id=receiver.id, 
+        message=message, 
+        reply_to_id=reply_to_id,
+        reply_obj=reply_obj
+        )
+    
+    db.session.add(new_message)
+    db.session.commit()
+
+
     # Emit the message to the receiver's room using receiver's email
     emit('receive_message', {
         'sender_email': sender_email,
         'receiver_email': receiver_email,
         'message': message,
-        'image_url': image_url,
         'reply_to_id': reply_to_id,
         'reply_to': reply_obj
         
@@ -1840,7 +1839,6 @@ def get_chats():
             'receiver_id': msg.receiver_id,
             'receiver_email': user2.email if msg.receiver_id == user2.id else user1.email,
             'message': msg.message,
-            'image_url': msg.image_url,
             'reply_to_id': msg.reply_to_id,
             'reply_to': {
                 'id': msg.reply_to.id,
