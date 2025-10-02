@@ -1771,16 +1771,16 @@ def handle_message(data):
         emit('error', {'error': 'Sender or receiver not found'})
         return
     
-        reply_obj = None
+    reply_obj = None
     if reply_to_id:
         original_msg = Message.query.get(reply_to_id)
-    if original_msg:
-        original_sender = Task.query.get(original_msg.sender_id)
-        reply_obj = {
-            'id': original_msg.id,
-            'message': original_msg.message,
-            'sender_email': original_sender.email if original_sender else ""
-        }
+        if original_msg:
+            original_sender = Task.query.get(original_msg.sender_id)
+            reply_obj = {
+                'id': original_msg.id,
+                'message': original_msg.message,
+                'sender_email': original_sender.email if original_sender else ""
+            }
 
     # Store the message in the database
     new_message = Message(
@@ -1788,7 +1788,6 @@ def handle_message(data):
         receiver_id=receiver.id, 
         message=message, 
         reply_to_id=reply_to_id,
-        reply_obj=reply_obj
         )
     
     db.session.add(new_message)
