@@ -1700,11 +1700,12 @@ def get_signin_data():
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
-    sender_email = request.form.get('sender_email')
-    receiver_email = request.form.get('receiver_email')
-    message = request.form.get('message')
-    reply_to_id = request.form.get('reply_to_id')
-    reply_to_id = int(reply_to_id) if reply_to_id else None  # ✅ ensure int
+    data = request.get_json()  # ✅ get JSON body instead of form
+
+    sender_email = data.get('sender_email')
+    receiver_email = data.get('receiver_email')
+    message = data.get('message')
+    reply_to_id = data.get('reply_to_id')  # already int or None
 
     if not sender_email or not receiver_email or not message:
         return jsonify({'error': 'Missing data'}), 400
