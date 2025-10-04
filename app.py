@@ -1842,6 +1842,7 @@ def get_chats():
     # Prepare the chat history for response, adding sender and receiver emails
     chat_history = [
         {
+            'id': msg.id,  # ✅ include the message ID
             'sender_id': msg.sender_id,
             'sender_email': user1.email if msg.sender_id == user1.id else user2.email,
             'receiver_id': msg.receiver_id,
