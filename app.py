@@ -1762,7 +1762,7 @@ def send_message():
         sender_id=sender.id,
         receiver_id=receiver.id,
         message=message,
-        image_url=image_url,
+        image_file=image_file,
         reply_to_id=reply_to_id,
     )
     db.session.add(new_message)
@@ -1774,7 +1774,7 @@ def send_message():
         'sender_email': sender_email,
         'receiver_email': receiver_email,
         'message': message,
-        'image_url': image_url,
+        'image_file': image_file,
         'reply_to_id': reply_to_id,
         'reply_to': reply_obj
     }, room=receiver_email)
@@ -1783,7 +1783,7 @@ def send_message():
     return jsonify({
         'status': 'Message sent',
         'id': new_message.id,
-        'image_url': image_url,
+        'image_file': image_file,
         'reply_to_id': reply_to_id,
         'reply_to': reply_obj
     })
