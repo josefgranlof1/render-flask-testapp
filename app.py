@@ -1701,7 +1701,6 @@ def get_signin_data():
 @app.route('/send_message', methods=['POST'])
 def send_message():
     
-# Initialize
     image_url = None
     image_file = None
 
@@ -1711,13 +1710,14 @@ def send_message():
         receiver_email = data.get('receiver_email')
         message = data.get('message')
         reply_to_id = data.get('reply_to_id')
-        image_url = data.get('image_url')  # <-- handle URL in JSON
+        image_url = data.get('image_url')  # <— this stays if provided in JSON
     else:
         sender_email = request.form.get('sender_email')
         receiver_email = request.form.get('receiver_email')
         message = request.form.get('message')
         reply_to_id = request.form.get('reply_to_id')
         image_file = request.files.get('image_url')
+
 
 # Validation: must have text or image (file or URL)
     if not message and not image_file and not image_url:
