@@ -1701,13 +1701,26 @@ def get_signin_data():
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
-    data = request.get_json()  # ✅ get JSON body instead of form
+    sender_email = request.form.get('sender_email')
+    receiver_email = request.form.get('receiver_email')
+    message = request.form.get('message')  # optional if sending image
+    reply_to_id = request.form.get('reply_to_id')  # optional
 
-    sender_email = data.get('sender_email')
-    receiver_email = data.get('receiver_email')
-    message = data.get('message')
-    image_url = request.files['image']
-    reply_to_id = data.get('reply_to_id')  # already int or None
+    # Validate at least a message or file
+    if 'image' not in request.files and not message:
+        return jsonify({'error': 'Message or image is required'}), 400
+
+    # Handle image upload
+    image_url = None
+    if 'image' in request.files:
+        image = request.files['image']
+        if image and allowed_file(image.filename):
+            filename = secure_filename(image.filename)
+            image.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            image_url = f"/{UPLOAD_FOLDER}/{filename}"
+        else:
+            return jsonify({'error': 'Invalid file type'}), 400
+
 
     if not sender_email or not receiver_email or not message:
         return jsonify({'error': 'Missing data'}), 400
