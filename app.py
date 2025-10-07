@@ -1742,7 +1742,7 @@ def send_message():
         filename = secure_filename(image_file.filename)
         save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         image_file.save(save_path)
-        image_url = f"/{app.config['UPLOAD_FOLDER']}/{filename}"
+        image_url = f"/{app.config['UPLOAD_FOLDER']}/{filename}"  # ✅ overrides only if file exists
 
 
     # Handle reply-to if provided
