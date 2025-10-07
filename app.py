@@ -1724,9 +1724,10 @@ def send_message():
         image = request.files['image']
         if image and allowed_file(image.filename):
             filename = secure_filename(image.filename)
-            image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+            image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             image.save(image_path)
-            image_url = f"/uploads/{filename}"
+            image_url = f"/{UPLOAD_FOLDER}/{filename}"
+            return jsonify({'status': 'Image saved', 'image_url': image_url})
         else:
             return jsonify({'error': 'Invalid image'}), 400
 
