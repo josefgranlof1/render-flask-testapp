@@ -1713,21 +1713,30 @@ def send_message():
     receiver_email = request.form.get('receiver_email')
     message = request.form.get('message')
     reply_to_id = request.form.get('reply_to_id', type=int)
+    image_file = request.files.get('image')  # optional file upload
 
-    image_file = request.files.get('image')  # ✅ This replaces image_data
-    
-        # Save image if uploaded
-    image_url = save_image(image_file)  # Uses the helper from earlier
-
-    if not sender_email or not receiver_email or not message:
-        return jsonify({'error': 'Missing data'}), 400
+    # Validate users
+    if not sender_email or not receiver_email:
+        return jsonify({'error': 'Missing sender or receiver'}), 400
 
     sender = Task.query.filter_by(email=sender_email).first()
     receiver = Task.query.filter_by(email=receiver_email).first()
-
     if not sender or not receiver:
         return jsonify({'error': 'Sender or receiver not found'}), 404
 
+    # ✅ At least one of message or image must be provided
+    if not message and not image_file:
+        return jsonify({'error': 'Message or image required'}), 400
+
+    # Save image (if provided)
+    image_url = None
+    if image_file and allowed_file(image_file.filename):
+        filename = secure_filename(f"{uuid.uuid4().hex}_{image_file.filename}")
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        image_file.save(filepath)
+        image_url = f"/static/uploads/{filename}"
+
+    # Handle reply
     reply_obj = None
     if reply_to_id:
         original_msg = Message.query.get(reply_to_id)
@@ -1738,15 +1747,8 @@ def send_message():
                 'message': original_msg.message,
                 'sender_email': original_sender.email if original_sender else ""
             }
-    
-    # Handle image upload
-    image_url = None
-    if image_file and allowed_file(image_file.filename):
-        filename = secure_filename(image_file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        image_file.save(filepath)
-        image_url = f'/static/uploads/{filename}'  # public URL to serve image
 
+    # Save message
     new_message = Message(
         sender_id=sender.id,
         receiver_id=receiver.id,
@@ -1757,6 +1759,7 @@ def send_message():
     db.session.add(new_message)
     db.session.commit()
 
+    # Notify receiver in real-time
     socketio.emit('receive_message', {
         'id': new_message.id,
         'sender_email': sender_email,
@@ -1777,19 +1780,23 @@ def send_message():
 
 
 
+
 @socketio.on('send_message')
 def handle_message(data):
-    sender_email = data['sender_email']
-    receiver_email = data['receiver_email']
-    message = data['message']
-    image_data = data.get('image_data')  # ✅ Define it here
-    reply_to_id = data['reply_to_id']
-    reply_obj = data['reply_obj']
-    
-    # Look up user IDs based on emails
+    sender_email = data.get('sender_email')
+    receiver_email = data.get('receiver_email')
+    message = data.get('message')
+    reply_to_id = data.get('reply_to_id')
+    image_data = data.get('image_data')  # base64 encoded image if sent
+
+    # Validate users
     sender = Task.query.filter_by(email=sender_email).first()
     receiver = Task.query.filter_by(email=receiver_email).first()
-    
+    if not sender or not receiver:
+        emit('error', {'error': 'Sender or receiver not found'})
+        return
+
+    # Save image if base64 data provided
     image_url = None
     if image_data:
         filename = f"{uuid.uuid4().hex}.png"
@@ -1797,12 +1804,13 @@ def handle_message(data):
         with open(filepath, "wb") as f:
             f.write(base64.b64decode(image_data))
         image_url = f"/static/uploads/{filename}"
-    
 
-    if not sender or not receiver:
-        emit('error', {'error': 'Sender or receiver not found'})
+    # Require at least one of message/image
+    if not message and not image_url:
+        emit('error', {'error': 'Message or image required'})
         return
-    
+
+    # Handle reply (optional)
     reply_obj = None
     if reply_to_id:
         original_msg = Message.query.get(reply_to_id)
@@ -1814,29 +1822,28 @@ def handle_message(data):
                 'sender_email': original_sender.email if original_sender else ""
             }
 
-    # Store the message in the database
+    # Save message to DB
     new_message = Message(
-        sender_id=sender.id, 
-        receiver_id=receiver.id, 
+        sender_id=sender.id,
+        receiver_id=receiver.id,
         message=message,
         image_url=image_url,
-        reply_to_id=reply_to_id,
-        )
-    
+        reply_to_id=reply_to_id
+    )
     db.session.add(new_message)
     db.session.commit()
 
-
-    # Emit the message to the receiver's room using receiver's email
+    # Emit to receiver
     emit('receive_message', {
+        'id': new_message.id,
         'sender_email': sender_email,
         'receiver_email': receiver_email,
         'message': message,
-        'image_url': image_url,        
+        'image_url': image_url,
         'reply_to_id': reply_to_id,
         'reply_to': reply_obj
-        
     }, room=receiver_email)
+
 
 
 @socketio.on('join')
