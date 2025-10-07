@@ -20,17 +20,18 @@ app.config[
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
-# Define upload folder inside static so Flask can serve uploaded files
-UPLOAD_FOLDER = os.path.join('static', 'uploads')
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+# Set the upload folder configuration
+app.config['UPLOAD_FOLDER'] = 'uploads'
+ 
+# Ensure the uploads folder exists
+if not os.path.exists(app.config['UPLOAD_FOLDER']):
+    os.makedirs(app.config['UPLOAD_FOLDER'])
 
-# Configure Flask app
+UPLOAD_FOLDER = 'uploads/'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# Ensure the uploads folder exists
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-
-# Helper function to check allowed file types
+# Check if the file extension is allowed
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -48,7 +49,7 @@ class Message(db.Model):
     sender_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     receiver_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     message = db.Column(db.Text, nullable=False)
-    image_url = db.Column(db.String(255), nullable=True)  # ✅ Add this line    
+    image_url = db.Column(db.String())
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     reply_to_id = db.Column(db.Integer, db.ForeignKey('messages.id'), nullable=True)
 
@@ -732,15 +733,6 @@ def match_all_users():
     except Exception as e:
         print(f"Error in match_all_users: {str(e)}")
         return {}
-
-def save_image(file):
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        unique_name = f"{uuid.uuid4().hex}_{filename}"  # prepend unique ID
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_name)
-        file.save(file_path)
-        return f"/static/uploads/{unique_name}"
-    return None
 
 
 # Given a user id returns the best 5 matches sorted
@@ -1709,34 +1701,40 @@ def get_signin_data():
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
-    sender_email = request.form.get('sender_email')
-    receiver_email = request.form.get('receiver_email')
-    message = request.form.get('message')
-    reply_to_id = request.form.get('reply_to_id', type=int)
-    image_file = request.files.get('image')  # optional file upload
+    data = request.get_json()  # ✅ get JSON body instead of form
 
-    # Validate users
-    if not sender_email or not receiver_email:
-        return jsonify({'error': 'Missing sender or receiver'}), 400
+    sender_email = data.get('sender_email')
+    receiver_email = data.get('receiver_email')
+    message = data.get('message')
+    image_url = request.files['image']
+    reply_to_id = data.get('reply_to_id')  # already int or None
+
+    if not sender_email or not receiver_email or not message:
+        return jsonify({'error': 'Missing data'}), 400
 
     sender = Task.query.filter_by(email=sender_email).first()
     receiver = Task.query.filter_by(email=receiver_email).first()
+
     if not sender or not receiver:
         return jsonify({'error': 'Sender or receiver not found'}), 404
 
-    # ✅ At least one of message or image must be provided
-    if not message and not image_file:
-        return jsonify({'error': 'Message or image required'}), 400
-
-    # Save image (if provided)
+    # Handle image
     image_url = None
-    if image_file and allowed_file(image_file.filename):
-        filename = secure_filename(f"{uuid.uuid4().hex}_{image_file.filename}")
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        image_file.save(filepath)
-        image_url = f"/static/uploads/{filename}"
+    if 'image' in request.files:
+        image = request.files['image']
+        if image and allowed_file(image.filename):
+            filename = secure_filename(image.filename)
+            image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+            image.save(image_path)
+            image_url = f"/uploads/{filename}"
+        else:
+            return jsonify({'error': 'Invalid image'}), 400
 
-    # Handle reply
+    # Require at least one of message or image
+    if not message and not image_url:
+        return jsonify({'error': 'Message or image is required'}), 400
+
+
     reply_obj = None
     if reply_to_id:
         original_msg = Message.query.get(reply_to_id)
@@ -1748,7 +1746,6 @@ def send_message():
                 'sender_email': original_sender.email if original_sender else ""
             }
 
-    # Save message
     new_message = Message(
         sender_id=sender.id,
         receiver_id=receiver.id,
@@ -1759,7 +1756,6 @@ def send_message():
     db.session.add(new_message)
     db.session.commit()
 
-    # Notify receiver in real-time
     socketio.emit('receive_message', {
         'id': new_message.id,
         'sender_email': sender_email,
@@ -1773,44 +1769,35 @@ def send_message():
     return jsonify({
         'status': 'Message sent',
         'id': new_message.id,
-        'image_url': image_url,
+        'image_url': image_url,            
         'reply_to_id': reply_to_id,
         'reply_to': reply_obj
     })
 
 
-
-
 @socketio.on('send_message')
 def handle_message(data):
-    sender_email = data.get('sender_email')
-    receiver_email = data.get('receiver_email')
-    message = data.get('message')
-    reply_to_id = data.get('reply_to_id')
-    image_data = data.get('image_data')  # base64 encoded image if sent
-
-    # Validate users
+    sender_email = data['sender_email']
+    receiver_email = data['receiver_email']
+    message = data['message']
+    image_url = data.get('image_url')  # optional, e.g., sent after upload    
+    reply_to_id = data['reply_to_id']
+    reply_obj = data['reply_obj']
+    
+    # Look up user IDs based on emails
     sender = Task.query.filter_by(email=sender_email).first()
     receiver = Task.query.filter_by(email=receiver_email).first()
+    
+
     if not sender or not receiver:
         emit('error', {'error': 'Sender or receiver not found'})
         return
-
-    # Save image if base64 data provided
-    image_url = None
-    if image_data:
-        filename = f"{uuid.uuid4().hex}.png"
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        with open(filepath, "wb") as f:
-            f.write(base64.b64decode(image_data))
-        image_url = f"/static/uploads/{filename}"
-
-    # Require at least one of message/image
+    
+        # Require at least a message or image
     if not message and not image_url:
-        emit('error', {'error': 'Message or image required'})
+        emit('error', {'error': 'Message or image is required'})
         return
-
-    # Handle reply (optional)
+    
     reply_obj = None
     if reply_to_id:
         original_msg = Message.query.get(reply_to_id)
@@ -1822,26 +1809,28 @@ def handle_message(data):
                 'sender_email': original_sender.email if original_sender else ""
             }
 
-    # Save message to DB
+    # Store the message in the database
     new_message = Message(
-        sender_id=sender.id,
-        receiver_id=receiver.id,
+        sender_id=sender.id, 
+        receiver_id=receiver.id, 
         message=message,
-        image_url=image_url,
-        reply_to_id=reply_to_id
-    )
+        image_url=image_url, 
+        reply_to_id=reply_to_id,
+        )
+    
     db.session.add(new_message)
     db.session.commit()
 
-    # Emit to receiver
+
+    # Emit the message to the receiver's room using receiver's email
     emit('receive_message', {
-        'id': new_message.id,
         'sender_email': sender_email,
         'receiver_email': receiver_email,
         'message': message,
-        'image_url': image_url,
+        'image_url': image_url,        
         'reply_to_id': reply_to_id,
         'reply_to': reply_obj
+        
     }, room=receiver_email)
 
 
