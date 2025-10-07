@@ -47,7 +47,8 @@ class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     sender_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     receiver_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
-    message = db.Column(db.Text, nullable=False)
+    message = db.Column(db.Text, nullable=True)  # Allow null if image-only
+    image_url = db.Column(db.String(255), nullable=True)  # Add a field for image path or URL
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     reply_to_id = db.Column(db.Integer, db.ForeignKey('messages.id'), nullable=True)
 
@@ -1700,21 +1701,43 @@ def get_signin_data():
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
-    data = request.get_json()  # ✅ get JSON body instead of form
+    
+        # Handle both JSON and multipart/form-data
+    if request.is_json:
+        data = request.get_json()
+        sender_email = data.get('sender_email')
+        receiver_email = data.get('receiver_email')
+        message = data.get('message')
+        reply_to_id = data.get('reply_to_id')
+        image_file = None
+    else:
+        sender_email = request.form.get('sender_email')
+        receiver_email = request.form.get('receiver_email')
+        message = request.form.get('message')
+        reply_to_id = request.form.get('reply_to_id')
+        image_file = request.files.get('image')
 
-    sender_email = data.get('sender_email')
-    receiver_email = data.get('receiver_email')
-    message = data.get('message')
-    reply_to_id = data.get('reply_to_id')  # already int or None
+    if not sender_email or not receiver_email:
+        return jsonify({'error': 'Missing sender or receiver email'}), 400
 
-    if not sender_email or not receiver_email or not message:
-        return jsonify({'error': 'Missing data'}), 400
+    if not message and not image_file:
+        return jsonify({'error': 'Message must contain text or image'}), 400
+
 
     sender = Task.query.filter_by(email=sender_email).first()
     receiver = Task.query.filter_by(email=receiver_email).first()
 
     if not sender or not receiver:
         return jsonify({'error': 'Sender or receiver not found'}), 404
+    
+        # Handle image upload if present
+    image_url = None
+    if image_file and allowed_file(image_file.filename):
+        filename = secure_filename(image_file.filename)
+        save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        image_file.save(save_path)
+        image_url = f"/{app.config['UPLOAD_FOLDER']}{filename}"
+    
 
     reply_obj = None
     if reply_to_id:
@@ -1731,7 +1754,8 @@ def send_message():
         sender_id=sender.id,
         receiver_id=receiver.id,
         message=message,
-        reply_to_id=reply_to_id
+        reply_to_id=reply_to_id,
+        image_file=image_file
     )
     db.session.add(new_message)
     db.session.commit()
@@ -1741,6 +1765,7 @@ def send_message():
         'sender_email': sender_email,
         'receiver_email': receiver_email,
         'message': message,
+        'image_file': image_file,
         'reply_to_id': reply_to_id,
         'reply_to': reply_obj
     }, room=receiver_email)
@@ -1748,6 +1773,7 @@ def send_message():
     return jsonify({
         'status': 'Message sent',
         'id': new_message.id,
+        'image_url': image_url,
         'reply_to_id': reply_to_id,
         'reply_to': reply_obj
     })
@@ -1759,8 +1785,19 @@ def handle_message(data):
     sender_email = data['sender_email']
     receiver_email = data['receiver_email']
     message = data['message']
+    image_url = data.get('image_url')  # New field from frontend    
     reply_to_id = data['reply_to_id']
     reply_obj = data['reply_obj']
+    
+    
+        # Validate basic data
+    if not sender_email or not receiver_email:
+        emit('error', {'error': 'Missing sender or receiver email'})
+        return
+
+    if not message and not image_url:
+        emit('error', {'error': 'Message must contain text or image'})
+        return
     
     # Look up user IDs based on emails
     sender = Task.query.filter_by(email=sender_email).first()
@@ -1786,7 +1823,8 @@ def handle_message(data):
     new_message = Message(
         sender_id=sender.id, 
         receiver_id=receiver.id, 
-        message=message, 
+        message=message,
+        image_url=image_url,     
         reply_to_id=reply_to_id,
         )
     
@@ -1799,6 +1837,7 @@ def handle_message(data):
         'sender_email': sender_email,
         'receiver_email': receiver_email,
         'message': message,
+        'image_url': image_url,    
         'reply_to_id': reply_to_id,
         'reply_to': reply_obj
         
@@ -1848,10 +1887,12 @@ def get_chats():
             'receiver_id': msg.receiver_id,
             'receiver_email': user2.email if msg.receiver_id == user2.id else user1.email,
             'message': msg.message,
+            'image_url': msg.image_url,  # ✅ Added field
             'reply_to_id': msg.reply_to_id,
             'reply_to': {
                 'id': msg.reply_to.id,
                 'message': msg.reply_to.message,
+                'image_url': msg.reply_to.image_url,  # ✅ Include in replies too
                 'sender_id': msg.reply_to.sender_id,
                 'sender_email': user1.email if msg.reply_to.sender_id == user1.id else user2.email
         } if msg.reply_to else None,
