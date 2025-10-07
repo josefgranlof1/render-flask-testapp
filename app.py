@@ -153,8 +153,7 @@ class UserPreference(db.Model):
 
     # Relationships
     user = db.relationship('Task', foreign_keys=[user_id], backref=db.backref('preferences', lazy=True))
-    preferred_user = db.relationship('Task', foreign_keys=[preferred_user_id],
-                                     backref=db.backref('preferred_by', lazy=True))
+    preferred_user = db.relationship('Task', foreign_keys=[preferred_user_id], backref=db.backref('preferred_by', lazy=True))
 
 
 class Match(db.Model):
@@ -1702,23 +1701,28 @@ def get_signin_data():
 @app.route('/send_message', methods=['POST'])
 def send_message():
     
-    # Initialize
+# Initialize
     image_url = None
     image_file = None
 
-    # Handle JSON and multipart/form-data
     if request.is_json:
         data = request.get_json()
         sender_email = data.get('sender_email')
         receiver_email = data.get('receiver_email')
         message = data.get('message')
         reply_to_id = data.get('reply_to_id')
+        image_url = data.get('image_url')  # <-- handle URL in JSON
     else:
         sender_email = request.form.get('sender_email')
         receiver_email = request.form.get('receiver_email')
         message = request.form.get('message')
         reply_to_id = request.form.get('reply_to_id')
         image_file = request.files.get('image_url')
+
+# Validation: must have text or image (file or URL)
+    if not message and not image_file and not image_url:
+        return jsonify({'error': 'Message must contain text or image'}), 400
+
 
     # Validate required fields
     if not sender_email or not receiver_email:
@@ -1734,12 +1738,12 @@ def send_message():
     if not sender or not receiver:
         return jsonify({'error': 'Sender or receiver not found'}), 404
     
-    # Handle image upload
     if image_file and allowed_file(image_file.filename):
         filename = secure_filename(image_file.filename)
         save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         image_file.save(save_path)
         image_url = f"/{app.config['UPLOAD_FOLDER']}/{filename}"
+
 
     # Handle reply-to if provided
     reply_obj = None
