@@ -1702,25 +1702,29 @@ def get_signin_data():
 @app.route('/send_message', methods=['POST'])
 def send_message():
     
-        # Handle both JSON and multipart/form-data
+    # Initialize
+    image_url = None
+    image_file = None
+
+    # Handle JSON and multipart/form-data
     if request.is_json:
         data = request.get_json()
         sender_email = data.get('sender_email')
         receiver_email = data.get('receiver_email')
         message = data.get('message')
         reply_to_id = data.get('reply_to_id')
-        image_url = None
     else:
         sender_email = request.form.get('sender_email')
         receiver_email = request.form.get('receiver_email')
         message = request.form.get('message')
         reply_to_id = request.form.get('reply_to_id')
-        image_url = request.files.get('image_url')
+        image_file = request.files.get('image_url')
 
+    # Validate required fields
     if not sender_email or not receiver_email:
         return jsonify({'error': 'Missing sender or receiver email'}), 400
 
-    if not message and not image_url:
+    if not message and not image_file:
         return jsonify({'error': 'Message must contain text or image'}), 400
 
 
@@ -1730,15 +1734,14 @@ def send_message():
     if not sender or not receiver:
         return jsonify({'error': 'Sender or receiver not found'}), 404
     
-        # Handle image upload if present
-    image_url = None
-    if image_url and allowed_file(image_url.filename):
-        filename = secure_filename(image_url.filename)
+    # Handle image upload
+    if image_file and allowed_file(image_file.filename):
+        filename = secure_filename(image_file.filename)
         save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        image_url.save(save_path)
-        image_url = f"/{app.config['UPLOAD_FOLDER']}{filename}"
-    
+        image_file.save(save_path)
+        image_url = f"/{app.config['UPLOAD_FOLDER']}/{filename}"
 
+    # Handle reply-to if provided
     reply_obj = None
     if reply_to_id:
         original_msg = Message.query.get(reply_to_id)
@@ -1750,6 +1753,7 @@ def send_message():
                 'sender_email': original_sender.email if original_sender else ""
             }
 
+    # Create new message
     new_message = Message(
         sender_id=sender.id,
         receiver_id=receiver.id,
@@ -1760,6 +1764,7 @@ def send_message():
     db.session.add(new_message)
     db.session.commit()
 
+    # Emit message to receiver via SocketIO
     socketio.emit('receive_message', {
         'id': new_message.id,
         'sender_email': sender_email,
@@ -1770,6 +1775,7 @@ def send_message():
         'reply_to': reply_obj
     }, room=receiver_email)
 
+    # Return JSON response
     return jsonify({
         'status': 'Message sent',
         'id': new_message.id,
