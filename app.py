@@ -1754,7 +1754,7 @@ def send_message():
         sender_id=sender.id,
         receiver_id=receiver.id,
         message=message,
-        image_url=image_url
+        image_url=image_url,
         reply_to_id=reply_to_id,
     )
     db.session.add(new_message)
