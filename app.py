@@ -27,7 +27,7 @@ app.config['UPLOAD_FOLDER'] = 'uploads'
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
 
-UPLOAD_FOLDER = 'uploads/'
+UPLOAD_FOLDER = 'static/uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
@@ -1700,40 +1700,30 @@ def get_signin_data():
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
-    data = request.get_json()  # ✅ get JSON body instead of form
+    sender_email = request.form.get('sender_email')
+    receiver_email = request.form.get('receiver_email')
+    message = request.form.get('message')
+    reply_to_id = request.form.get('reply_to_id', type=int)
+    image_file = request.files.get('image_url')  # Get the uploaded file
 
-    sender_email = data.get('sender_email')
-    receiver_email = data.get('receiver_email')
-    message = data.get('message')
-    reply_to_id = data.get('reply_to_id')  # already int or None
-    image_url = request.form.get('image_url')
+    # Validate at least message or image
+    if not message and not image_file:
+        return jsonify({'error': 'Message or image is required'}), 400
 
-
-    # Validate at least a message or file
-    if 'image_url' not in request.files and not message:
-        return jsonify({'error': 'Message or image_url is required'}), 400
-
-    # Handle image upload
     image_url = None
-    if 'image_url' in request.files:
-        image_url = request.files['image_url']
-        if image_url and allowed_file(image_url.filename):
-            filename = secure_filename(image_url.filename)
-            image_url.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            image_url = f"/{UPLOAD_FOLDER}/{filename}"
-        else:
-            return jsonify({'error': 'Invalid file type'}), 400
+    if image_file and allowed_file(image_file.filename):
+        filename = secure_filename(image_file.filename)
+        image_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))  # ✅ SAVE HERE
+        image_url = f"/{app.config['UPLOAD_FOLDER']}/{filename}"
+        
 
-
-    if not sender_email or not receiver_email or not message:
-        return jsonify({'error': 'Missing data'}), 400
-
+    # Check sender and receiver
     sender = Task.query.filter_by(email=sender_email).first()
     receiver = Task.query.filter_by(email=receiver_email).first()
-
     if not sender or not receiver:
         return jsonify({'error': 'Sender or receiver not found'}), 404
 
+    # Handle reply reference
     reply_obj = None
     if reply_to_id:
         original_msg = Message.query.get(reply_to_id)
@@ -1745,16 +1735,18 @@ def send_message():
                 'sender_email': original_sender.email if original_sender else ""
             }
 
+    # Create message record
     new_message = Message(
         sender_id=sender.id,
         receiver_id=receiver.id,
-        message=message,
+        message=message or "",
         image_url=image_url,
         reply_to_id=reply_to_id
     )
     db.session.add(new_message)
     db.session.commit()
 
+    # Emit via SocketIO (if applicable)
     socketio.emit('receive_message', {
         'id': new_message.id,
         'sender_email': sender_email,
@@ -1768,10 +1760,10 @@ def send_message():
     return jsonify({
         'status': 'Message sent',
         'id': new_message.id,
-        'image_url': image_url,            
+        'image_url': image_url,
         'reply_to_id': reply_to_id,
         'reply_to': reply_obj
-    })
+    }), 200
 
 
 @socketio.on('send_message')
