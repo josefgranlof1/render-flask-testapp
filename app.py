@@ -27,7 +27,7 @@ db = SQLAlchemy(app)
 app.config['UPLOAD_FOLDER'] = 'uploads'
  
 # Ensure the uploads folder exists
-if not os.path.exists(app.config['UPLOAD_FOLDER'], exist_ok=True):
+if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
 
 UPLOAD_FOLDER = 'static/uploads'
