@@ -1708,16 +1708,16 @@ def send_message():
 
 
     # Validate at least a message or file
-    if 'image' not in request.files and not message:
-        return jsonify({'error': 'Message or image is required'}), 400
+    if 'image_url' not in request.files and not message:
+        return jsonify({'error': 'Message or image_url is required'}), 400
 
     # Handle image upload
     image_url = None
-    if 'image' in request.files:
-        image = request.files['image']
-        if image and allowed_file(image.filename):
-            filename = secure_filename(image.filename)
-            image.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+    if 'image_url' in request.files:
+        image_url = request.files['image_url']
+        if image_url and allowed_file(image_url.filename):
+            filename = secure_filename(image_url.filename)
+            image_url.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
             image_url = f"/{UPLOAD_FOLDER}/{filename}"
         else:
             return jsonify({'error': 'Invalid file type'}), 400
