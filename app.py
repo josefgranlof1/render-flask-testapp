@@ -1745,7 +1745,7 @@ def send_message():
     new_message = Message(
         sender_id=sender.id,
         receiver_id=receiver.id,
-        message=message or "",
+        message=message,
         image_url=image_url,
         reply_to_id=reply_to_id
     )
