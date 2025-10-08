@@ -2,7 +2,6 @@ import random
 from datetime import datetime
 import re
 from email.policy import default
-
 from flask import Flask, jsonify, request, session, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO, join_room, send, emit
@@ -11,8 +10,8 @@ from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 from sqlalchemy import or_, and_
 from flask import request, jsonify
-import uuid
-import base64
+import time
+
 
 app = Flask(__name__)
 app.config[
@@ -20,9 +19,16 @@ app.config[
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
+# # Set the upload folder configuration
+# app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads')
+# os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
 # Set the upload folder configuration
-app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads')
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+app.config['UPLOAD_FOLDER'] = 'uploads'
+ 
+# Ensure the uploads folder exists
+if not os.path.exists(app.config['UPLOAD_FOLDER'], exist_ok=True):
+    os.makedirs(app.config['UPLOAD_FOLDER'])
 
 UPLOAD_FOLDER = 'static/uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
@@ -173,6 +179,23 @@ with app.app_context():
 
 
 # API Endpoints
+
+def generate_temp_filename(file):
+    """
+    Generate a safe, unique filename for an uploaded image in the pattern:
+        temp_image_file<timestamp>.<extension>
+    
+    Example:
+        temp_image_file1741434790790.jpg
+    """
+    # Extract the extension from the original filename
+    _, ext = os.path.splitext(secure_filename(file.filename))
+
+    # Generate a timestamp-based unique filename
+    timestamp = int(time.time() * 1000)
+
+    # Combine into final format
+    return f"temp_image_file{timestamp}{ext}"
 
 def has_user_checked_in(user_id, location_id):
     return db.session.query(CheckIn).filter_by(user_id=user_id, location_id=location_id).first() is not None
@@ -1711,9 +1734,8 @@ def send_message():
         return jsonify({'error': 'Message or image is required'}), 400
 
     # Handle file upload
-    image_url = None
     if image_file and allowed_file(image_file.filename):
-        filename = secure_filename(image_file.filename)
+        filename = generate_temp_filename(image_file)
         image_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
         image_url = f"/static/uploads/{filename}"
 
