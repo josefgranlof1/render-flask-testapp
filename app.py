@@ -1739,7 +1739,7 @@ def send_message():
     if image_file and allowed_file(image_file.filename):
         filename = generate_temp_filename(image_file)
         image_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        image_url = f"/static/uploads/{filename}"
+        image_url = f"{filename}"
 
     elif image_file:
         return jsonify({'error': 'Invalid file type'}), 400
