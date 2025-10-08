@@ -16,7 +16,7 @@ import base64
 
 app = Flask(__name__)
 app.config[
-    'SQLALCHEMY_DATABASE_URI'] = "postgresql://wings600_render_example_user:iFgsDP9fmgablTuQZBnCGaqhM4gQwJmA@dpg-d3ief33ipnbc73e4cadg-a.frankfurt-postgres.render.com/wings600_render_example"
+    'SQLALCHEMY_DATABASE_URI'] = "postgresql://wings701_render_example_user:L1CT8azJht9pJiQRKnMqRm3L6uhfo0wg@dpg-d3j5e3qli9vc73dovpig-a.frankfurt-postgres.render.com/wings701_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
