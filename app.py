@@ -1573,7 +1573,6 @@ def trigger_matchmaking_for_location(location_id):
         return None
 
 
-
 @app.route('/attend', methods=['POST'])
 def attend_location():
     data = request.get_json()
@@ -1703,8 +1702,10 @@ def get_signin_data():
 def send_message():
     sender_email = request.form.get('sender_email')
     receiver_email = request.form.get('receiver_email')
-    message = request.form.get('message')  # optional if sending image
-    reply_to_id = request.form.get('reply_to_id')  # optional
+    message = request.form.get('message')
+    reply_to_id = request.form.get('reply_to_id')
+    image_url = request.form.get('image_url')
+
 
     # Validate at least a message or file
     if 'image' not in request.files and not message:
@@ -1730,24 +1731,6 @@ def send_message():
 
     if not sender or not receiver:
         return jsonify({'error': 'Sender or receiver not found'}), 404
-
-    # Handle image
-    image_url = None
-    if 'image' in request.files:
-        image = request.files['image']
-        if image and allowed_file(image.filename):
-            filename = secure_filename(image.filename)
-            image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            image.save(image_path)
-            image_url = f"/{UPLOAD_FOLDER}/{filename}"
-            return jsonify({'status': 'Image saved', 'image_url': image_url})
-        else:
-            return jsonify({'error': 'Invalid image'}), 400
-
-    # Require at least one of message or image
-    if not message and not image_url:
-        return jsonify({'error': 'Message or image is required'}), 400
-
 
     reply_obj = None
     if reply_to_id:
