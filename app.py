@@ -1700,10 +1700,12 @@ def get_signin_data():
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
-    sender_email = request.form.get('sender_email')
-    receiver_email = request.form.get('receiver_email')
-    message = request.form.get('message')
-    reply_to_id = request.form.get('reply_to_id')
+    data = request.get_json()  # ✅ get JSON body instead of form
+
+    sender_email = data.get('sender_email')
+    receiver_email = data.get('receiver_email')
+    message = data.get('message')
+    reply_to_id = data.get('reply_to_id')  # already int or None
     image_url = request.form.get('image_url')
 
 
