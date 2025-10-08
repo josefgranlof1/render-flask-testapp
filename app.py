@@ -21,11 +21,8 @@ socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
 # Set the upload folder configuration
-app.config['UPLOAD_FOLDER'] = 'uploads'
- 
-# Ensure the uploads folder exists
-if not os.path.exists(app.config['UPLOAD_FOLDER']):
-    os.makedirs(app.config['UPLOAD_FOLDER'])
+app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads')
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 UPLOAD_FOLDER = 'static/uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
@@ -1718,7 +1715,8 @@ def send_message():
     if image_file and allowed_file(image_file.filename):
         filename = secure_filename(image_file.filename)
         image_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        image_url = f"/{app.config['UPLOAD_FOLDER']}/{filename}"
+        image_url = f"/static/uploads/{filename}"
+
     elif image_file:
         return jsonify({'error': 'Invalid file type'}), 400
         
