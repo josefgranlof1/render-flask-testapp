@@ -23,8 +23,6 @@ db = SQLAlchemy(app)
 # app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads')
 # os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-app = Flask(__name__)
-
 # Define absolute upload path inside the project
 UPLOAD_FOLDER = os.path.join(app.root_path, 'static', 'uploads')
 
