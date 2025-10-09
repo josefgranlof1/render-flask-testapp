@@ -23,12 +23,13 @@ db = SQLAlchemy(app)
 # app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads')
 # os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Define upload path inside the static folder
-UPLOAD_FOLDER = os.path.join('static', 'uploads')
+app = Flask(__name__)
+
+# Define absolute upload path inside the project
+UPLOAD_FOLDER = os.path.join(app.root_path, 'static', 'uploads')
 
 # Make sure the uploads directory exists
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Register configuration in Flask app
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -39,6 +40,7 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 # Helper to check allowed extensions
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 
 
 class Task(db.Model):
