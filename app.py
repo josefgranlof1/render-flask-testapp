@@ -1038,7 +1038,8 @@ def upload_image():
 
         # Check if the file is allowed
         if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
+            # Generate a unique timestamped filename
+            filename = generate_temp_filename(file)
 
             # Save the file in the 'uploads' folder
             file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
