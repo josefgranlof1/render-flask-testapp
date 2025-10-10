@@ -1471,6 +1471,7 @@ def get_user_matches_for_location(user_id, location_id):
                 'phone_number': other_user_data.phone_number,
                 'image_url': image_url,
                 'status': match.status,
+                'consent': match.consent,                
                 'current_server_time': get_unix_timestamp(datetime.now(timezone.utc)),
                 'visible_after': match.visible_after
             })
