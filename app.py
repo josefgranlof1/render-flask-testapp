@@ -1104,18 +1104,29 @@ def upload_image():
     try:
         # Check if the request contains a file
         if 'imageString' not in request.files:
+            print("❌ No imageString in request.files")
             return jsonify({"error": "No image file provided"}), 400
+
+        print("\n=== /upload_image called ===")
+        print("Received form keys:", list(request.form.keys()))
+        print("Received file keys:", list(request.files.keys()))
 
         file = request.files['imageString']
         new_email = request.form.get('email')
+        print("Email received:", new_email)
+
+        print(f"✅ Received file: {file.filename}, content-type={file.content_type}")
 
         # Check if email is provided
         if not new_email:
             return jsonify({"error": "Email is required"}), 400
 
+        print("Querying user by email...")
         user = Task.query.filter_by(email=new_email).first()
+        print("DB user lookup result:", user)
 
         if not user:
+            print("❌ No user found with this email")
             return jsonify({'error': "No user registered with this email"}), 400
 
         user_auth_id = user.id
@@ -1155,6 +1166,7 @@ def upload_image():
             return jsonify({"error": "Invalid image format"}), 400
 
     except Exception as e:
+        print("💥 Exception occurred in upload_image:", str(e))
         return jsonify({"error": str(e)}), 500
 
 
