@@ -1,7 +1,8 @@
 import random
-from datetime import datetime
+from datetime import datetime, timezone
 import re
 from email.policy import default
+
 from flask import Flask, jsonify, request, session, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO, join_room, send, emit
@@ -10,35 +11,28 @@ from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 from sqlalchemy import or_, and_
 from flask import request, jsonify
-import time
-
 
 app = Flask(__name__)
 app.config[
-    'SQLALCHEMY_DATABASE_URI'] = "postgresql://wings701_render_example_user:L1CT8azJht9pJiQRKnMqRm3L6uhfo0wg@dpg-d3j5e3qli9vc73dovpig-a.frankfurt-postgres.render.com/wings701_render_example"
+    'SQLALCHEMY_DATABASE_URI'] = "postgresql://wings901_render_example_user:Op4QewaBxMa8tPBfabpR4thok4Ek718F@dpg-d3kdm7ffte5s738a5mt0-a.frankfurt-postgres.render.com/wings901_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
-# # Set the upload folder configuration
-# app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads')
-# os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+# Set the upload folder configuration
+app.config['UPLOAD_FOLDER'] = 'uploads'
 
-# Define absolute upload path inside the project
-UPLOAD_FOLDER = os.path.join(app.root_path, 'static', 'uploads')
+# Ensure the uploads folder exists
+if not os.path.exists(app.config['UPLOAD_FOLDER']):
+    os.makedirs(app.config['UPLOAD_FOLDER'])
 
-# Make sure the uploads directory exists
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-# Register configuration in Flask app
+UPLOAD_FOLDER = 'uploads/'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# Allowed file extensions
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
-# Helper to check allowed extensions
+# Check if the file extension is allowed
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
 
 
 class Task(db.Model):
@@ -54,13 +48,10 @@ class Message(db.Model):
     sender_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     receiver_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     message = db.Column(db.Text, nullable=False)
-    image_url = db.Column(db.String())
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    reply_to_id = db.Column(db.Integer, db.ForeignKey('messages.id'), nullable=True)
+    timestamp = db.Column(db.DateTime, default=datetime.now(timezone.utc))
 
     sender = db.relationship('Task', foreign_keys=[sender_id], backref=db.backref('sent_messages', lazy=True))
     receiver = db.relationship('Task', foreign_keys=[receiver_id], backref=db.backref('received_messages', lazy=True))
-    reply_to = db.relationship('Message', remote_side=[id], backref=db.backref('replies', lazy=True))
 
 
 class UserData(db.Model):
@@ -123,7 +114,7 @@ class CheckIn(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     location_id = db.Column(db.Integer, db.ForeignKey('locationInfo.id'), nullable=False)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=datetime.now(timezone.utc))
 
     user = db.relationship('Task', backref=db.backref('checkins', lazy=True))
     location = db.relationship('LocationInfo', backref=db.backref('checkins', lazy=True))
@@ -138,7 +129,7 @@ class Attendance(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     location_id = db.Column(db.Integer, db.ForeignKey('locationInfo.id'), nullable=False)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=datetime.now(timezone.utc))
     hasAttended = db.Column(db.Boolean, default=False)
 
     user = db.relationship('Task', backref=db.backref('attendances', lazy=True))
@@ -155,11 +146,12 @@ class UserPreference(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     preferred_user_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     preference = db.Column(db.String(20), nullable=False)  # 'like', 'reject', 'save_later'
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=datetime.now(timezone.utc))
 
     # Relationships
     user = db.relationship('Task', foreign_keys=[user_id], backref=db.backref('preferences', lazy=True))
-    preferred_user = db.relationship('Task', foreign_keys=[preferred_user_id], backref=db.backref('preferred_by', lazy=True))
+    preferred_user = db.relationship('Task', foreign_keys=[preferred_user_id],
+                                     backref=db.backref('preferred_by', lazy=True))
 
 
 class Match(db.Model):
@@ -167,37 +159,22 @@ class Match(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user1_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     user2_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
-    match_date = db.Column(db.DateTime, default=datetime.utcnow)
-    visible_after = db.Column(db.DateTime)
-    status = db.Column(db.String(20), default='pending')  # 'pending', 'active', 'deleted'
+    match_date = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    visible_after = db.Column(db.Integer)
+    status = db.Column(db.String(20), default='pending')  # only for matchmaking
+    consent = db.Column(db.String(20), default='pending')  # 'pending', 'synergy', 'deleted'
+    location_id = db.Column(db.Integer, db.ForeignKey('locationInfo.id'), nullable=True)
 
     # Relationships
     user1 = db.relationship('Task', foreign_keys=[user1_id], backref=db.backref('matches_as_user1', lazy=True))
     user2 = db.relationship('Task', foreign_keys=[user2_id], backref=db.backref('matches_as_user2', lazy=True))
-
+    location = db.relationship('LocationInfo', backref=db.backref('matches_at_location', lazy=True))
 
 with app.app_context():
     db.create_all()
 
 
 # API Endpoints
-
-def generate_temp_filename(file):
-    """
-    Generate a safe, unique filename for an uploaded image in the pattern:
-        temp_image_file<timestamp>.<extension>
-    
-    Example:
-        temp_image_file1741434790790.jpg
-    """
-    # Extract the extension from the original filename
-    _, ext = os.path.splitext(secure_filename(file.filename))
-
-    # Generate a timestamp-based unique filename
-    timestamp = int(time.time() * 1000)
-
-    # Combine into final format
-    return f"temp_image_file{timestamp}{ext}"
 
 def has_user_checked_in(user_id, location_id):
     return db.session.query(CheckIn).filter_by(user_id=user_id, location_id=location_id).first() is not None
@@ -234,7 +211,7 @@ def set_preference():
         if existing_preference:
             # Update existing preference
             existing_preference.preference = preference
-            existing_preference.timestamp = datetime.utcnow()
+            existing_preference.timestamp = datetime.now(timezone.utc)
         else:
             # Create new preference
             new_preference = UserPreference(
@@ -243,6 +220,23 @@ def set_preference():
                 preference=preference
             )
             db.session.add(new_preference)
+
+        if preference == 'reject':
+            user1_id = user.id
+            user2_id = preferred_user.id
+
+            # Check if there's an existing match
+            existing_match = Match.query.filter(
+                or_(
+                    and_(Match.user1_id == user1_id, Match.user2_id == user2_id),
+                    and_(Match.user1_id == user2_id, Match.user2_id == user1_id)
+                )
+            ).first()
+
+            # Case II: One or both users rejected
+            if existing_match:
+                # Mark match as deleted
+                existing_match.consent = 'deleted'
 
         # Check if this creates a match
         process_potential_match(user.id, preferred_user.id)
@@ -264,14 +258,14 @@ def get_user_matches(email):
             return jsonify({'error': 'User not found'}), 404
 
         # Get all matches for this user that are visible now
-        current_time = datetime.utcnow()
+        current_time = datetime.now(timezone.utc)
         matches = Match.query.filter(
             or_(
                 Match.user1_id == user.id,
                 Match.user2_id == user.id
             ),
-            Match.status != 'deleted',
-            Match.visible_after <= current_time
+            Match.consent != 'deleted',
+            Match.visible_after <= get_unix_timestamp(current_time)
         ).all()
 
         # Format the response
@@ -294,20 +288,20 @@ def get_user_matches(email):
                 user_id=other_user_id, preferred_user_id=user.id
             ).first()
 
-            # Determine match status from user's perspective
-            if match.status == 'active':
+            # Determine match consent from user's perspective
+            if match.consent == 'active':
                 # Both liked each other
-                display_status = 'matched'
+                display_consent = 'matched'
                 show_message_button = True
-            else:  # status is 'pending'
+            else:  # consent is 'pending'
                 if user_pref and user_pref.preference == 'save_later':
-                    display_status = 'decide'  # User needs to decide
+                    display_consent = 'decide'  # User needs to decide
                     show_message_button = False
                 elif other_pref and other_pref.preference == 'save_later':
-                    display_status = 'pending'  # Waiting for other user
+                    display_consent = 'pending'  # Waiting for other user
                     show_message_button = False
                 else:
-                    display_status = 'pending'  # Generic pending
+                    display_consent = 'pending'  # Generic pending
                     show_message_button = False
 
             # Get profile image
@@ -324,7 +318,7 @@ def get_user_matches(email):
                 'email': other_user.email,
                 'age': other_user_data.age,
                 'bio': other_user_data.bio,
-                'status': display_status,
+                'consent': display_consent,
                 'show_message_button': show_message_button,
                 'match_date': match.match_date,
                 'image_url': image_url
@@ -405,7 +399,7 @@ def update_match_status():
                 db.session.add(new_pref)
 
             # Mark match as deleted
-            match.status = 'deleted'
+            match.consent = 'deleted'
 
         db.session.commit()
 
@@ -441,23 +435,23 @@ def process_potential_match(user1_id, user2_id):
     # Case I: Both users like each other
     if pref1.preference == 'like' and pref2.preference == 'like':
         if existing_match:
-            # Update match status
-            existing_match.status = 'active'
-            existing_match.visible_after = datetime.utcnow() + timedelta(minutes=20)
+            # Update match consent
+            existing_match.consent = 'active'
+            existing_match.visible_after = get_unix_timestamp(datetime.now(timezone.utc) + timedelta(minutes=20))
         else:
             # Create new match with 20 minute delay
             new_match = Match(
                 user1_id=user1_id,
                 user2_id=user2_id,
-                visible_after=datetime.utcnow() + timedelta(minutes=20),
-                status='active'
+                visible_after=get_unix_timestamp(datetime.now(timezone.utc) + timedelta(minutes=20)),
+                consent='active'
             )
             db.session.add(new_match)
     # Case II: One or both users rejected
     elif pref1.preference == 'reject' or pref2.preference == 'reject':
         if existing_match:
             # Mark match as deleted
-            existing_match.status = 'deleted'
+            existing_match.consent = 'deleted'
     # Case III & IV: Save for later scenarios
     elif pref1.preference == 'save_later' or pref2.preference == 'save_later':
         # Only proceed if neither preference is 'reject'
@@ -467,8 +461,8 @@ def process_potential_match(user1_id, user2_id):
                 new_match = Match(
                     user1_id=user1_id,
                     user2_id=user2_id,
-                    status='pending',
-                    visible_after=datetime.utcnow()  # Visible immediately, but pending
+                    consent='pending',
+                    visible_after=get_unix_timestamp(datetime.now(timezone.utc))  # Visible immediately, but pending
                 )
                 db.session.add(new_match)
 
@@ -509,14 +503,14 @@ def get_match_status(user_id, other_user_id):
             user_id=other_user_id, preferred_user_id=user_id
         ).first()
 
-        current_time = datetime.utcnow()
+        current_time = datetime.now(timezone.utc)
 
         matches = Match.query.filter(
             or_(
                 Match.user1_id == user_id,
                 Match.user2_id == user_id
             ),
-            Match.status != 'deleted',
+            Match.consent != 'deleted',
             Match.visible_after <= current_time
         ).all()
         for match in matches:
@@ -527,25 +521,25 @@ def get_match_status(user_id, other_user_id):
             if matched_user_id != other_user_id:
                 continue
 
-            # Determine match status from user's perspective
-            if match.status == 'active':
+            # Determine match consent from user's perspective
+            if match.consent == 'active':
                 # Both liked each other
-                display_status = 'matched'
+                display_consent = 'matched'
                 show_message_button = True
-            else:  # status is 'pending'
+            else:  # consent is 'pending'
                 if user_pref and user_pref.preference == 'save_later':
-                    display_status = 'decide'  # User needs to decide
+                    display_consent = 'decide'  # User needs to decide
                     show_message_button = False
                 elif other_pref and other_pref.preference == 'save_later':
-                    display_status = 'pending'  # Waiting for other user
+                    display_consent = 'pending'  # Waiting for other user
                     show_message_button = False
                 else:
-                    display_status = 'pending'  # Generic pending
+                    display_consent = 'pending'  # Generic pending
                     show_message_button = False
-            return [display_status, show_message_button]
+            return [display_consent, show_message_button]
         return ""
     except Exception as e:
-        print(f"Error in get_status: {str(e)}")
+        print(f"Error in get_consent: {str(e)}")
         return ""
 
 
@@ -574,8 +568,8 @@ def get_user_matches(user_id, limit=5):
         # Get existing matches and preferences to avoid duplicates
         existing_matches = Match.query.filter(
             or_(Match.user1_id == user_id, Match.user2_id == user_id),
-            # and_(Match.status != 'deleted', Match.status != 'active')
-            Match.status != 'deleted'
+            # and_(Match.consent != 'deleted', Match.consent != 'active')
+            Match.consent != 'deleted'
         ).all()
 
         existing_preferences = UserPreference.query.filter_by(user_id=user_id).all()
@@ -784,6 +778,74 @@ def home():
     return jsonify({"user_details": task_list})
 
 
+# POSTING USER DATA TO DATABASE
+@app.route('/massUserData', methods=['POST'])
+def mass_update_user_data():
+    try:
+
+        data = request.get_json()
+
+        users = data.get('users')
+
+        for userData in users:
+            newEmail = userData['email']
+            user = Task.query.filter_by(email=newEmail).first()
+
+            if not user:
+                continue
+
+            user_auth_id = user.id
+            firstname = userData['firstname']
+            lastname = userData['lastname']
+            gender = userData['gender']
+            hobbies = userData['hobbies']
+            preferences = userData['preferences']
+            phone_number = userData['phone_number']
+            age = userData['age']
+            bio = userData['bio']
+
+            # Check if user details already exist
+            userDetails = UserData.query.filter_by(user_auth_id=user_auth_id).first()
+
+            if userDetails:
+                # Update existing user details
+                userDetails.firstname = firstname
+                userDetails.lastname = lastname
+                userDetails.email = newEmail
+                userDetails.gender = gender
+                userDetails.hobbies = hobbies
+                userDetails.preferences = preferences
+                userDetails.phone_number = phone_number
+                userDetails.age = age
+                userDetails.bio = bio
+
+                print(f'Updated user details: {newEmail}')
+
+            else:
+                # Add new user details
+                userDetails = UserData(
+                    user_auth_id=user_auth_id,
+                    firstname=firstname,
+                    lastname=lastname,
+                    email=newEmail,
+                    gender=gender,
+                    hobbies=hobbies,
+                    preferences=preferences,
+                    phone_number=phone_number,
+                    age=age,
+                    bio=bio
+                )
+                db.session.add(userDetails)
+                print(f'Added user details: {newEmail}')
+
+        db.session.commit()
+
+        return jsonify({'message': 'Users data updated'}), 201
+
+    except Exception as e:
+        return jsonify({'error': 'Internal Server Error'}), 500
+
+
 @app.route('/create_all', methods=['POST'])
 def mass_create_users():
     try:
@@ -814,6 +876,7 @@ def mass_create_users():
             newUserDetails = Task(email=new_email, password=new_password)
             db.session.add(newUserDetails)
             db.session.commit()
+            print(f'New user created email: {new_email}')
 
         return jsonify({'message': "New Users added"}), 201
 
@@ -1038,8 +1101,7 @@ def upload_image():
 
         # Check if the file is allowed
         if file and allowed_file(file.filename):
-            # Generate a unique timestamped filename
-            filename = generate_temp_filename(file)
+            filename = secure_filename(file.filename)
 
             # Save the file in the 'uploads' folder
             file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -1125,14 +1187,15 @@ def getUserData():
                 'phone_number': userDetails.phone_number,
                 'age': userDetails.age,
                 'bio': userDetails.bio,
-                'image_url': image_url  # Include the image URL in the response
+                'image_url': image_url,  # Include the image URL in the response
+                'current_server_time': get_unix_timestamp(datetime.now(timezone.utc)),
             }
             users.append(user)
 
         return jsonify({'users': users}), 200
 
     except Exception as e:
-        return jsonify({'error': 'Internal Server Error'}), 500
+        return jsonify({'error': f'Internal Server Error: {e}'}), 500
 
 
 # Getting Relationships DATA FROM DATABASE 2025
@@ -1271,12 +1334,14 @@ def checkin():
         event_time = datetime.strptime(f"{location.date} {location.time}", "%Y-%m-%d %H:%M")
         current_time = datetime.now()
         time_diff = (current_time - event_time).total_seconds()
-        if time_diff > 600:
-            location.checkin_closed = True  # Work: 41410282
-            db.session.commit()  # Work: 41410282
-            # Trigger matchmaking when time expires (even if slots aren't full)
-            trigger_matchmaking_for_location(location_id)
-            return jsonify({'message': 'Check-in period has ended (10 minutes after event time)'}), 400
+
+        # Todo: Uncomment the following after testing
+        # if time_diff > 600:
+        #     location.checkin_closed = True  # Work: 41410282
+        #     db.session.commit()  # Work: 41410282
+        #     # Trigger matchmaking when time expires (even if slots aren't full)
+        #     trigger_matchmaking_for_location(location_id)
+        #     return jsonify({'message': 'Check-in period has ended (10 minutes after event time)'}), 400
     except Exception as e:
         print(f"Error parsing event time: {str(e)}")
 
@@ -1342,12 +1407,10 @@ def check_checkin():
     else:
         return jsonify({'checked_in': False}), 200
 
-def get_unix_timestamp(datatime):
-    # Parse the string into a datetime object (YYYY-MM-DD HH:MM:SS.microseconds)
-    dt = datetime.strptime(datatime, "%Y-%m-%d %H:%M:%S.%f")
 
+def get_unix_timestamp(datatime):
     # Convert to Unix timestamp (seconds since epoch)
-    unix_ts = int(dt.timestamp())
+    unix_ts = int(datatime.timestamp())
 
     return unix_ts
 
@@ -1384,7 +1447,8 @@ def get_user_matches_for_location(user_id, location_id):
         result = []
         for match in existing_matches:
 
-            matched_user_id = int(match.user2_id if match.user1_id == user_id else match.user1_id) # get opposite match id
+            matched_user_id = int(
+                match.user2_id if match.user1_id == user_id else match.user1_id)  # get opposite match id
 
             # Get user image if available
             user_image = UserImages.query.filter_by(user_auth_id=matched_user_id).first()
@@ -1407,8 +1471,8 @@ def get_user_matches_for_location(user_id, location_id):
                 'phone_number': other_user_data.phone_number,
                 'image_url': image_url,
                 'status': match.status,
-                'current_server_time': get_unix_timestamp(str(datetime.utcnow())),
-                'visible_after': get_unix_timestamp(str(match.visible_after))
+                'current_server_time': get_unix_timestamp(datetime.now(timezone.utc)),
+                'visible_after': match.visible_after
             })
 
         return jsonify({'matches': result})
@@ -1416,6 +1480,7 @@ def get_user_matches_for_location(user_id, location_id):
     except Exception as e:
         print(f"Error in get_user_matches: {str(e)}")
         return jsonify({'matches': []})
+
 
 def trigger_matchmaking_for_location(location_id):
     """
@@ -1449,6 +1514,28 @@ def trigger_matchmaking_for_location(location_id):
         if len(checked_in_users) < 2:
             print(f"Not enough valid users for matchmaking at location {location_id}")
             return None
+
+        # Query to get all existing active matches at this location for all the checked in users
+        existing_matches = (
+            db.session.query(Match)
+            .filter(
+                Match.status == 'active',
+                or_(
+                    Match.user1_id.in_(checked_in_user_ids),
+                    Match.user2_id.in_(checked_in_user_ids)
+                ),
+                Match.location_id == location_id,
+            )
+            .all()
+        )
+
+        existing_matches_tuple = []
+        if existing_matches:
+            for match in existing_matches:
+                user_1 = match.user1_id
+                user_2 = match.user2_id
+                existing_matches_tuple.append((user_1, user_2))
+                existing_matches_tuple.append((user_2, user_1))
 
         # Separate users by gender for proper matching
         male_users = []
@@ -1545,6 +1632,9 @@ def trigger_matchmaking_for_location(location_id):
                 print(f"SKIPPING: Self-match detected for user {male_user.id}")
                 continue
 
+            if (male_user.id, female_user.id) in existing_matches_tuple:
+                print(f"SKIPPING: Existing match found ({male_user.id}, {female_user.id}) with active status")
+                continue
 
             # Get user preferences
             user_pref = UserPreference.query.filter_by(
@@ -1555,7 +1645,6 @@ def trigger_matchmaking_for_location(location_id):
                 user_id=female_user.id, preferred_user_id=male_user.id
             ).first()
 
-
             if user_pref and user_pref.preference == 'reject':
                 print(f"SKIPPING: Preference already rejected for user {male_user.id}")
                 continue
@@ -1563,18 +1652,19 @@ def trigger_matchmaking_for_location(location_id):
                 print(f"SKIPPING: Preference already rejected for user {female_user.id}")
                 continue
 
-
+            visible_after_timestamp = get_unix_timestamp(datetime.now(timezone.utc) + timedelta(minutes=20))
             # Create mutual match
             new_match = Match(
                 user1_id=male_user.id,
                 user2_id=female_user.id,
                 status='active',
-                visible_after=datetime.utcnow() + timedelta(minutes=20)
+                location_id=location_id,
+                visible_after=visible_after_timestamp
             )
             db.session.add(new_match)
             matches_created += 1
             print(
-                f"Created mutual match: User {male_user.id} ({male_user.email}) ↔ User {female_user.id} ({female_user.email})")
+                f"At: {datetime.now(timezone.utc)}, Created mutual match: User {male_user.id} ({male_user.email}) ↔ User {female_user.id} ({female_user.email}), visible after: {visible_after_timestamp}")
 
         db.session.commit()
         print(f"Automatic matchmaking completed for location {location_id}: {matches_created} matches created")
@@ -1723,76 +1813,34 @@ def get_signin_data():
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
-    # Get text fields from form-data
     sender_email = request.form.get('sender_email')
     receiver_email = request.form.get('receiver_email')
     message = request.form.get('message')
-    reply_to_id = request.form.get('reply_to_id', type=int)
-    
-    # Get uploaded file
-    image_file = request.files.get('image_url')  # must match input name
 
-    # Validate at least message or image
-    if not message and not image_file:
-        return jsonify({'error': 'Message or image is required'}), 400
+    # Check if any of the fields are missing
+    if not sender_email or not receiver_email or not message:
+        return jsonify({'error': 'Missing data'}), 400
 
-    # Handle file upload
-    if image_file and allowed_file(image_file.filename):
-        filename = generate_temp_filename(image_file)
-        image_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        image_url = f"{filename}"
-
-    elif image_file:
-        return jsonify({'error': 'Invalid file type'}), 400
-        
-
-    # Check sender and receiver
+    # Look up user IDs based on emails
     sender = Task.query.filter_by(email=sender_email).first()
     receiver = Task.query.filter_by(email=receiver_email).first()
+
     if not sender or not receiver:
         return jsonify({'error': 'Sender or receiver not found'}), 404
 
-    # Handle reply reference
-    reply_obj = None
-    if reply_to_id:
-        original_msg = Message.query.get(reply_to_id)
-        if original_msg:
-            original_sender = Task.query.get(original_msg.sender_id)
-            reply_obj = {
-                'id': original_msg.id,
-                'message': original_msg.message,
-                'sender_email': original_sender.email if original_sender else ""
-            }
-
-    # Create message record
-    new_message = Message(
-        sender_id=sender.id,
-        receiver_id=receiver.id,
-        message=message,
-        image_url=image_url,
-        reply_to_id=reply_to_id
-    )
+    # Store the message in the database
+    new_message = Message(sender_id=sender.id, receiver_id=receiver.id, message=message)
     db.session.add(new_message)
     db.session.commit()
 
-    # Emit via SocketIO (if applicable)
+    # Emit the message to the receiver's room using receiver's email
     socketio.emit('receive_message', {
-        'id': new_message.id,
         'sender_email': sender_email,
         'receiver_email': receiver_email,
-        'message': message,
-        'image_url': image_url,
-        'reply_to_id': reply_to_id,
-        'reply_to': reply_obj
+        'message': message
     }, room=receiver_email)
 
-    return jsonify({
-        'status': 'Message sent',
-        'id': new_message.id,
-        'image_url': image_url,
-        'reply_to_id': reply_to_id,
-        'reply_to': reply_obj
-    }), 200
+    return jsonify({'status': 'Message sent'})
 
 
 @socketio.on('send_message')
@@ -1800,59 +1848,26 @@ def handle_message(data):
     sender_email = data['sender_email']
     receiver_email = data['receiver_email']
     message = data['message']
-    image_url = data.get('image_url')  # optional, e.g., sent after upload    
-    reply_to_id = data['reply_to_id']
-    reply_obj = data['reply_obj']
-    
+
     # Look up user IDs based on emails
     sender = Task.query.filter_by(email=sender_email).first()
     receiver = Task.query.filter_by(email=receiver_email).first()
-    
 
     if not sender or not receiver:
         emit('error', {'error': 'Sender or receiver not found'})
         return
-    
-        # Require at least a message or image
-    if not message and not image_url:
-        emit('error', {'error': 'Message or image is required'})
-        return
-    
-    reply_obj = None
-    if reply_to_id:
-        original_msg = Message.query.get(reply_to_id)
-        if original_msg:
-            original_sender = Task.query.get(original_msg.sender_id)
-            reply_obj = {
-                'id': original_msg.id,
-                'message': original_msg.message,
-                'sender_email': original_sender.email if original_sender else ""
-            }
 
     # Store the message in the database
-    new_message = Message(
-        sender_id=sender.id, 
-        receiver_id=receiver.id, 
-        message=message,
-        image_url=image_url, 
-        reply_to_id=reply_to_id,
-        )
-    
+    new_message = Message(sender_id=sender.id, receiver_id=receiver.id, message=message)
     db.session.add(new_message)
     db.session.commit()
-
 
     # Emit the message to the receiver's room using receiver's email
     emit('receive_message', {
         'sender_email': sender_email,
         'receiver_email': receiver_email,
-        'message': message,
-        'image_url': image_url,        
-        'reply_to_id': reply_to_id,
-        'reply_to': reply_obj
-        
+        'message': message
     }, room=receiver_email)
-
 
 
 @socketio.on('join')
@@ -1892,21 +1907,11 @@ def get_chats():
     # Prepare the chat history for response, adding sender and receiver emails
     chat_history = [
         {
-            'id': msg.id,  # ✅ include the message ID
             'sender_id': msg.sender_id,
             'sender_email': user1.email if msg.sender_id == user1.id else user2.email,
             'receiver_id': msg.receiver_id,
             'receiver_email': user2.email if msg.receiver_id == user2.id else user1.email,
             'message': msg.message,
-            'image_url': msg.image_url,  # ✅ Added field
-            'reply_to_id': msg.reply_to_id,
-            'reply_to': {
-                'id': msg.reply_to.id,
-                'message': msg.reply_to.message,
-                'image_url': msg.reply_to.image_url,  # ✅ Include in replies too
-                'sender_id': msg.reply_to.sender_id,
-                'sender_email': user1.email if msg.reply_to.sender_id == user1.id else user2.email
-        } if msg.reply_to else None,
             'timestamp': msg.timestamp
         }
         for msg in messages
