@@ -2,7 +2,6 @@ import random
 from datetime import datetime, timezone
 import re
 from email.policy import default
-
 from flask import Flask, jsonify, request, session, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO, join_room, send, emit
@@ -11,26 +10,28 @@ from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 from sqlalchemy import or_, and_
 from flask import request, jsonify
+import time
+
 
 app = Flask(__name__)
 app.config[
-    'SQLALCHEMY_DATABASE_URI'] = "postgresql://wings901_render_example_user:Op4QewaBxMa8tPBfabpR4thok4Ek718F@dpg-d3kdm7ffte5s738a5mt0-a.frankfurt-postgres.render.com/wings901_render_example"
+    'SQLALCHEMY_DATABASE_URI'] = "postgresql://wingstest1001_render_example_user:J45dHA72hBtCxNLmKvsvBTWD5eJ981o5@dpg-d3klu0vfte5s73din2qg-a.frankfurt-postgres.render.com/wingstest1001_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
-# Set the upload folder configuration
-app.config['UPLOAD_FOLDER'] = 'uploads'
+# Define absolute upload path inside the project
+UPLOAD_FOLDER = os.path.join(app.root_path, 'static', 'uploads')
 
-# Ensure the uploads folder exists
-if not os.path.exists(app.config['UPLOAD_FOLDER']):
-    os.makedirs(app.config['UPLOAD_FOLDER'])
+# Make sure the uploads directory exists
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-UPLOAD_FOLDER = 'uploads/'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+# Register configuration in Flask app
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+# Allowed file extensions
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
-# Check if the file extension is allowed
+# Helper to check allowed extensions
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -48,10 +49,13 @@ class Message(db.Model):
     sender_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     receiver_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     message = db.Column(db.Text, nullable=False)
-    timestamp = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    image_url = db.Column(db.String())
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    reply_to_id = db.Column(db.Integer, db.ForeignKey('messages.id'), nullable=True)
 
     sender = db.relationship('Task', foreign_keys=[sender_id], backref=db.backref('sent_messages', lazy=True))
     receiver = db.relationship('Task', foreign_keys=[receiver_id], backref=db.backref('received_messages', lazy=True))
+    reply_to = db.relationship('Message', remote_side=[id], backref=db.backref('replies', lazy=True))
 
 
 class UserData(db.Model):
@@ -178,6 +182,23 @@ with app.app_context():
 
 def has_user_checked_in(user_id, location_id):
     return db.session.query(CheckIn).filter_by(user_id=user_id, location_id=location_id).first() is not None
+
+def generate_temp_filename(file):
+    """
+    Generate a safe, unique filename for an uploaded image in the pattern:
+        temp_image_file<timestamp>.<extension>
+    
+    Example:
+        temp_image_file1741434790790.jpg
+    """
+    # Extract the extension from the original filename
+    _, ext = os.path.splitext(secure_filename(file.filename))
+
+    # Generate a timestamp-based unique filename
+    timestamp = int(time.time() * 1000)
+
+    # Combine into final format
+    return f"temp_image_file{timestamp}{ext}"
 
 
 @app.route('/preference', methods=['POST'])
@@ -1814,34 +1835,76 @@ def get_signin_data():
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
+    # Get text fields from form-data
     sender_email = request.form.get('sender_email')
     receiver_email = request.form.get('receiver_email')
     message = request.form.get('message')
+    reply_to_id = request.form.get('reply_to_id', type=int)
+    
+    # Get uploaded file
+    image_file = request.files.get('image_url')  # must match input name
 
-    # Check if any of the fields are missing
-    if not sender_email or not receiver_email or not message:
-        return jsonify({'error': 'Missing data'}), 400
+    # Validate at least message or image
+    if not message and not image_file:
+        return jsonify({'error': 'Message or image is required'}), 400
 
-    # Look up user IDs based on emails
+    # Handle file upload
+    if image_file and allowed_file(image_file.filename):
+        filename = generate_temp_filename(image_file)
+        image_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        image_url = f"{filename}"
+
+    elif image_file:
+        return jsonify({'error': 'Invalid file type'}), 400
+        
+
+    # Check sender and receiver
     sender = Task.query.filter_by(email=sender_email).first()
     receiver = Task.query.filter_by(email=receiver_email).first()
-
     if not sender or not receiver:
         return jsonify({'error': 'Sender or receiver not found'}), 404
 
-    # Store the message in the database
-    new_message = Message(sender_id=sender.id, receiver_id=receiver.id, message=message)
+    # Handle reply reference
+    reply_obj = None
+    if reply_to_id:
+        original_msg = Message.query.get(reply_to_id)
+        if original_msg:
+            original_sender = Task.query.get(original_msg.sender_id)
+            reply_obj = {
+                'id': original_msg.id,
+                'message': original_msg.message,
+                'sender_email': original_sender.email if original_sender else ""
+            }
+
+    # Create message record
+    new_message = Message(
+        sender_id=sender.id,
+        receiver_id=receiver.id,
+        message=message,
+        image_url=image_url,
+        reply_to_id=reply_to_id
+    )
     db.session.add(new_message)
     db.session.commit()
 
-    # Emit the message to the receiver's room using receiver's email
+    # Emit via SocketIO (if applicable)
     socketio.emit('receive_message', {
+        'id': new_message.id,
         'sender_email': sender_email,
         'receiver_email': receiver_email,
-        'message': message
+        'message': message,
+        'image_url': image_url,
+        'reply_to_id': reply_to_id,
+        'reply_to': reply_obj
     }, room=receiver_email)
 
-    return jsonify({'status': 'Message sent'})
+    return jsonify({
+        'status': 'Message sent',
+        'id': new_message.id,
+        'image_url': image_url,
+        'reply_to_id': reply_to_id,
+        'reply_to': reply_obj
+    }), 200
 
 
 @socketio.on('send_message')
@@ -1849,25 +1912,57 @@ def handle_message(data):
     sender_email = data['sender_email']
     receiver_email = data['receiver_email']
     message = data['message']
-
+    image_url = data.get('image_url')  # optional, e.g., sent after upload    
+    reply_to_id = data['reply_to_id']
+    reply_obj = data['reply_obj']
+    
     # Look up user IDs based on emails
     sender = Task.query.filter_by(email=sender_email).first()
     receiver = Task.query.filter_by(email=receiver_email).first()
+    
 
     if not sender or not receiver:
         emit('error', {'error': 'Sender or receiver not found'})
         return
+    
+        # Require at least a message or image
+    if not message and not image_url:
+        emit('error', {'error': 'Message or image is required'})
+        return
+    
+    reply_obj = None
+    if reply_to_id:
+        original_msg = Message.query.get(reply_to_id)
+        if original_msg:
+            original_sender = Task.query.get(original_msg.sender_id)
+            reply_obj = {
+                'id': original_msg.id,
+                'message': original_msg.message,
+                'sender_email': original_sender.email if original_sender else ""
+            }
 
     # Store the message in the database
-    new_message = Message(sender_id=sender.id, receiver_id=receiver.id, message=message)
+    new_message = Message(
+        sender_id=sender.id, 
+        receiver_id=receiver.id, 
+        message=message,
+        image_url=image_url, 
+        reply_to_id=reply_to_id,
+        )
+    
     db.session.add(new_message)
     db.session.commit()
+
 
     # Emit the message to the receiver's room using receiver's email
     emit('receive_message', {
         'sender_email': sender_email,
         'receiver_email': receiver_email,
-        'message': message
+        'message': message,
+        'image_url': image_url,        
+        'reply_to_id': reply_to_id,
+        'reply_to': reply_obj
+        
     }, room=receiver_email)
 
 
@@ -1908,11 +2003,21 @@ def get_chats():
     # Prepare the chat history for response, adding sender and receiver emails
     chat_history = [
         {
+            'id': msg.id,  # ✅ include the message ID
             'sender_id': msg.sender_id,
             'sender_email': user1.email if msg.sender_id == user1.id else user2.email,
             'receiver_id': msg.receiver_id,
             'receiver_email': user2.email if msg.receiver_id == user2.id else user1.email,
             'message': msg.message,
+            'image_url': msg.image_url,  # ✅ Added field
+            'reply_to_id': msg.reply_to_id,
+            'reply_to': {
+                'id': msg.reply_to.id,
+                'message': msg.reply_to.message,
+                'image_url': msg.reply_to.image_url,  # ✅ Include in replies too
+                'sender_id': msg.reply_to.sender_id,
+                'sender_email': user1.email if msg.reply_to.sender_id == user1.id else user2.email
+        } if msg.reply_to else None,
             'timestamp': msg.timestamp
         }
         for msg in messages
