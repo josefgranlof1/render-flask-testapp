@@ -1103,10 +1103,10 @@ def postRelationshipsData():
 def upload_image():
     try:
         # Check if the request contains a file
-        if 'image' not in request.files:
+        if 'imageString' not in request.files:
             return jsonify({"error": "No image file provided"}), 400
 
-        file = request.files['image']
+        file = request.files['imageString']
         new_email = request.form.get('email')
 
         # Check if email is provided
