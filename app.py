@@ -15,7 +15,7 @@ import time
 
 app = Flask(__name__)
 app.config[
-    'SQLALCHEMY_DATABASE_URI'] = "postgresql://wingstest1001_render_example_user:J45dHA72hBtCxNLmKvsvBTWD5eJ981o5@dpg-d3klu0vfte5s73din2qg-a.frankfurt-postgres.render.com/wingstest1001_render_example?sslmode=require"
+    'SQLALCHEMY_DATABASE_URI'] = "postgresql+psycopg2://wingstest1001_render_example_user:J45dHA72hBtCxNLmKvsvBTWD5eJ981o5@dpg-d3klu0vfte5s73din2qg-a.frankfurt-postgres.render.com/wingstest1001_render_example?sslmode=require"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
