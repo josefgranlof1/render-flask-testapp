@@ -1856,18 +1856,22 @@ def send_message():
     # Get uploaded file
     image_file = request.files.get('image_url')  # must match input name
 
+    # Initialize image_url to None
+    image_url = None
+
     # Validate at least message or image
     if not message and not image_file:
         return jsonify({'error': 'Message or image is required'}), 400
 
     # Handle file upload
-    if image_file and allowed_file(image_file.filename):
-        filename = generate_temp_filename(image_file)
-        image_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        image_url = f"{filename}"
-
-    elif image_file:
-        return jsonify({'error': 'Invalid file type'}), 400
+    # Handle file upload
+    if image_file:
+        if allowed_file(image_file.filename):
+            filename = generate_temp_filename(image_file)
+            image_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            image_url = filename
+        else:
+            return jsonify({'error': 'Invalid file type'}), 400
         
 
     # Check sender and receiver
@@ -1893,7 +1897,7 @@ def send_message():
         sender_id=sender.id,
         receiver_id=receiver.id,
         message=message,
-        image_url=image_url,
+        image_url=image_url,  # safe now, always defined
         reply_to_id=reply_to_id
     )
     db.session.add(new_message)
