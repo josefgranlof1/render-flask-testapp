@@ -1928,7 +1928,7 @@ def handle_message(data):
     sender_email = data['sender_email']
     receiver_email = data['receiver_email']
     message = data['message']
-    image_url = data.get('image_url')  # optional, e.g., sent after upload    
+    image_url = data.get('image_url')  # optional
     reply_to_id = data['reply_to_id']
     reply_obj = data['reply_obj']
     
