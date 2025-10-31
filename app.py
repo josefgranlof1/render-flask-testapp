@@ -1700,7 +1700,8 @@ def get_user_matches_for_location(user_id, location_id):
                 'status': match.status,
                 'location': match.location_id,
                 'current_server_time': get_unix_timestamp(datetime.now(timezone.utc)),
-                'visible_after': match.visible_after
+                'visible_after': match.visible_after,
+                'round_number': match.round_number
             })
 
         if len(result) == 0:
