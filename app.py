@@ -18,6 +18,7 @@ app.config[
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
+
 # Set the upload folder configuration
 app.config['UPLOAD_FOLDER'] = 'uploads'
 
