@@ -2,36 +2,35 @@ import random
 from datetime import datetime, timezone
 import re
 from email.policy import default
+
 from flask import Flask, jsonify, request, session, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO, join_room, send, emit
 import os
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, desc
 from flask import request, jsonify
-import time
-
 
 app = Flask(__name__)
 app.config[
-    'SQLALCHEMY_DATABASE_URI'] = "postgresql+psycopg2://wingstest1001_render_example_user:J45dHA72hBtCxNLmKvsvBTWD5eJ981o5@dpg-d3klu0vfte5s73din2qg-a.frankfurt-postgres.render.com/wingstest1001_render_example?sslmode=require"
+    'SQLALCHEMY_DATABASE_URI'] = "postgresql://wings101_render_example_user:Bcco8OarB6bEhcJUVqFND7yTF1IUaytx@dpg-d42beq6r433s73f8jabg-a.frankfurt-postgres.render.com/wings101_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
-# Define absolute upload path inside the project
-UPLOAD_FOLDER = os.path.join(app.root_path, 'static', 'uploads')
+# Set the upload folder configuration
+app.config['UPLOAD_FOLDER'] = 'uploads'
 
-# Make sure the uploads directory exists
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# Ensure the uploads folder exists
+if not os.path.exists(app.config['UPLOAD_FOLDER']):
+    os.makedirs(app.config['UPLOAD_FOLDER'])
 
-# Register configuration in Flask app
+UPLOAD_FOLDER = 'uploads/'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# Allowed file extensions
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
-# Helper to check allowed extensions
+# Check if the file extension is allowed
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -49,13 +48,10 @@ class Message(db.Model):
     sender_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     receiver_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     message = db.Column(db.Text, nullable=False)
-    image_url = db.Column(db.String())
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    reply_to_id = db.Column(db.Integer, db.ForeignKey('messages.id'), nullable=True)
+    timestamp = db.Column(db.DateTime, default=datetime.now(timezone.utc))
 
     sender = db.relationship('Task', foreign_keys=[sender_id], backref=db.backref('sent_messages', lazy=True))
     receiver = db.relationship('Task', foreign_keys=[receiver_id], backref=db.backref('received_messages', lazy=True))
-    reply_to = db.relationship('Message', remote_side=[id], backref=db.backref('replies', lazy=True))
 
 
 class UserData(db.Model):
@@ -165,16 +161,21 @@ class Match(db.Model):
     user2_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     match_date = db.Column(db.DateTime, default=datetime.now(timezone.utc))
     visible_after = db.Column(db.Integer)
-    status = db.Column(db.String(20), default='pending')  # only for matchmaking
-    consent = db.Column(db.String(20), default='pending')  # 'pending', 'synergy', 'deleted'
+    status = db.Column(db.String(20), default='pending')  # 'pending', 'active', 'deleted'
     location_id = db.Column(db.Integer, db.ForeignKey('locationInfo.id'), nullable=True)
+    matched_expired = db.Column(db.Boolean, default=False)  # <-- New boolean column
 
     # Relationships
     user1 = db.relationship('Task', foreign_keys=[user1_id], backref=db.backref('matches_as_user1', lazy=True))
     user2 = db.relationship('Task', foreign_keys=[user2_id], backref=db.backref('matches_as_user2', lazy=True))
     location = db.relationship('LocationInfo', backref=db.backref('matches_at_location', lazy=True))
 
+
 with app.app_context():
+    # Match.__table__.drop(db.engine)
+    # UserPreference.__table__.drop(db.engine)
+    # Attendance.__table__.drop(db.engine)
+    # CheckIn.__table__.drop(db.engine)
     db.create_all()
 
 
@@ -183,22 +184,63 @@ with app.app_context():
 def has_user_checked_in(user_id, location_id):
     return db.session.query(CheckIn).filter_by(user_id=user_id, location_id=location_id).first() is not None
 
-def generate_temp_filename(file):
-    """
-    Generate a safe, unique filename for an uploaded image in the pattern:
-        temp_image_file<timestamp>.<extension>
-    
-    Example:
-        temp_image_file1741434790790.jpg
-    """
-    # Extract the extension from the original filename
-    _, ext = os.path.splitext(secure_filename(file.filename))
 
-    # Generate a timestamp-based unique filename
-    timestamp = int(time.time() * 1000)
 
-    # Combine into final format
-    return f"temp_image_file{timestamp}{ext}"
+def is_round_complete(location_id):
+    """
+    Returns True if all active matches at the location have preferences from both users.
+    """
+    active_matches = Match.query.filter_by(location_id=location_id, status='active', matched_expired=False).all()
+    if not active_matches:
+        return False
+
+    for match in active_matches:
+        pref1 = UserPreference.query.filter_by(user_id=match.user1_id, preferred_user_id=match.user2_id).first()
+        pref2 = UserPreference.query.filter_by(user_id=match.user2_id, preferred_user_id=match.user1_id).first()
+        if not pref1 or not pref2:
+            return False
+    return True
+
+
+def end_matchmaking_round(location_id):
+    """
+    Mark all active matches for the given location as expired and set matched_expired=True.
+    """
+    active_matches = Match.query.filter_by(location_id=location_id, status='active', matched_expired=False).all()
+    if not active_matches:
+        print(f"No active matches to end for location {location_id}")
+        return
+
+    for match in active_matches:
+        match.status = 'expired'
+        match.matched_expired = True
+
+    db.session.commit()
+    print(f"Ended round at location {location_id}: {len(active_matches)} matches marked expired.")
+
+
+# I changed this, be aware!
+def process_potential_match(user1_id, user2_id):
+    """
+    Update existing match based on user preferences.
+    No new matches are created; round creation is handled separately.
+    """
+    pref1 = UserPreference.query.filter_by(user_id=user1_id, preferred_user_id=user2_id).first()
+    pref2 = UserPreference.query.filter_by(user_id=user2_id, preferred_user_id=user1_id).first()
+
+    if not pref1 or not pref2:
+        return  # Wait until both preferences exist
+
+    existing_match = Match.query.filter(
+        or_(
+            and_(Match.user1_id == user1_id, Match.user2_id == user2_id),
+            and_(Match.user1_id == user2_id, Match.user2_id == user1_id)
+        )
+    ).first()
+
+    if pref1.preference == 'reject' or pref2.preference == 'reject':
+        if existing_match:
+            existing_match.status = 'deleted'
 
 
 @app.route('/preference', methods=['POST'])
@@ -209,32 +251,34 @@ def set_preference():
         preferred_user_email = data.get('preferred_user_email')
         preference = data.get('preference')  # 'like', 'reject', 'save_later'
 
-        # Validate inputs
+        # --------------------------
+        # 1️⃣ Validate inputs
+        # --------------------------
         if not user_email or not preferred_user_email or not preference:
             return jsonify({'error': 'Missing required fields'}), 400
 
         if preference not in ['like', 'reject', 'save_later']:
             return jsonify({'error': 'Invalid preference type'}), 400
 
-        # Get user IDs from emails
+        # Get both users
         user = Task.query.filter_by(email=user_email).first()
         preferred_user = Task.query.filter_by(email=preferred_user_email).first()
 
         if not user or not preferred_user:
             return jsonify({'error': 'One or both users not found'}), 404
 
-        # Check if preference already exists
+        # --------------------------
+        # 2️⃣ Add or update preference
+        # --------------------------
         existing_preference = UserPreference.query.filter_by(
             user_id=user.id,
             preferred_user_id=preferred_user.id
         ).first()
 
         if existing_preference:
-            # Update existing preference
             existing_preference.preference = preference
             existing_preference.timestamp = datetime.now(timezone.utc)
         else:
-            # Create new preference
             new_preference = UserPreference(
                 user_id=user.id,
                 preferred_user_id=preferred_user.id,
@@ -242,11 +286,13 @@ def set_preference():
             )
             db.session.add(new_preference)
 
+        # --------------------------
+        # 3️⃣ Handle rejection
+        # --------------------------
         if preference == 'reject':
             user1_id = user.id
             user2_id = preferred_user.id
 
-            # Check if there's an existing match
             existing_match = Match.query.filter(
                 or_(
                     and_(Match.user1_id == user1_id, Match.user2_id == user2_id),
@@ -254,21 +300,225 @@ def set_preference():
                 )
             ).first()
 
-            # Case II: One or both users rejected
             if existing_match:
-                # Mark match as deleted
-                existing_match.consent = 'deleted'
+                existing_match.status = 'deleted'
 
-        # Check if this creates a match
+        # --------------------------
+        # 4️⃣ Update match status based on preferences
+        # --------------------------
         process_potential_match(user.id, preferred_user.id)
 
         db.session.commit()
+
+        # --------------------------
+        # 5️⃣ Check if round is complete
+        # --------------------------
+        match = Match.query.filter(
+            or_(
+                and_(Match.user1_id == user.id, Match.user2_id == preferred_user.id),
+                and_(Match.user1_id == preferred_user.id, Match.user2_id == user.id)
+            ),
+            Match.status == 'active',
+            Match.matched_expired == False
+        ).first()
+
+        if match:
+            location_id = match.location_id
+            if is_round_complete(location_id):
+                print(f"✅ Round complete for location {location_id}. Ending and starting next round...")
+                end_matchmaking_round(location_id)
+                trigger_matchmaking_for_location(location_id)
 
         return jsonify({'message': f'Preference set to {preference}'}), 201
 
     except Exception as e:
         print(f"Error in set_preference: {str(e)}")
+        db.session.rollback()
         return jsonify({'error': 'Internal Server Error'}), 500
+
+
+def trigger_matchmaking_for_location(location_id):
+    """
+    Trigger automatic matchmaking for all checked-in users at a specific location.
+    Each round creates 1:1 male-female matches.
+    - matched_expired = False for new matches
+    - previous active matches are marked expired before new round starts
+    """
+    try:
+        # --------------------------
+        # 1️⃣ End previous round if needed
+        # --------------------------
+        active_matches = Match.query.filter_by(location_id=location_id, status='active', matched_expired=False).all()
+        if active_matches:
+            print(f"Ending previous round for location {location_id}...")
+
+            for m in active_matches:
+                m.status = 'expired'
+                m.matched_expired = True
+
+            db.session.commit()
+            print(f"Marked {len(active_matches)} matches as expired before new round starts")
+
+        # --------------------------
+        # 2️⃣ Get all checked-in users
+        # --------------------------
+        checkins = CheckIn.query.filter_by(location_id=location_id).all()
+        checked_in_user_ids = [c.user_id for c in checkins]
+
+        if len(checked_in_user_ids) < 2:
+            print(f"Not enough users checked in for matchmaking at location {location_id}")
+            return None
+
+        checked_in_users = [Task.query.get(uid) for uid in checked_in_user_ids if Task.query.get(uid)]
+        if len(checked_in_users) < 2:
+            print(f"Not enough valid users for matchmaking at location {location_id}")
+            return None
+
+        location = LocationInfo.query.get(location_id)
+        if not location:
+            print(f"Location {location_id} not found")
+            return None
+
+        # --------------------------
+        # 3️⃣ Skip users in active matches (still in current round)
+        # --------------------------
+        busy_user_ids = db.session.query(Match.user1_id).filter_by(
+            status='active', location_id=location_id
+        ).union(
+            db.session.query(Match.user2_id).filter_by(
+                status='active', location_id=location_id
+            )
+        ).all()
+        busy_user_ids = [uid for (uid,) in busy_user_ids]
+
+        checked_in_user_ids = [uid for uid in checked_in_user_ids if uid not in busy_user_ids]
+        checked_in_users = [Task.query.get(uid) for uid in checked_in_user_ids if Task.query.get(uid)]
+
+        if len(checked_in_users) < 2:
+            print(f"No available users for new matches at location {location_id}")
+            return None
+
+        # --------------------------
+        # 4️⃣ Avoid rematching same pairs
+        # --------------------------
+        previous_matches = Match.query.filter(Match.location_id == location_id).all()
+        previous_pairs = set()
+        for m in previous_matches:
+            previous_pairs.add((m.user1_id, m.user2_id))
+            previous_pairs.add((m.user2_id, m.user1_id))
+
+        # --------------------------
+        # 5️⃣ Separate users by gender
+        # --------------------------
+        male_users, female_users = [], []
+        for u in checked_in_users:
+            udata = UserData.query.filter_by(user_auth_id=u.id).first()
+            if not udata or not udata.gender:
+                continue
+            gender = udata.gender.lower()
+            if gender in ['male', 'man', 'men']:
+                male_users.append(u)
+            elif gender in ['female', 'woman', 'women']:
+                female_users.append(u)
+
+        if not male_users or not female_users:
+            print(f"No male-female pairs possible at location {location_id}")
+            return None
+
+        # --------------------------
+        # 6️⃣ Fair rotation for odd counts
+        # --------------------------
+        users_left_out = []
+
+        if len(male_users) != len(female_users):
+            if len(male_users) > len(female_users):
+                excess_users, base_users, excess_gender = male_users, female_users, "male"
+            else:
+                excess_users, base_users, excess_gender = female_users, male_users, "female"
+
+            last_match = Match.query.order_by(Match.match_date.desc()).first()
+            if last_match:
+                recent_matches = Match.query.filter(
+                    Match.match_date >= last_match.match_date - timedelta(hours=1)
+                ).all()
+                recently_matched_ids = set()
+                for m in recent_matches:
+                    recently_matched_ids.add(m.user1_id)
+                    recently_matched_ids.add(m.user2_id)
+
+                candidates = [u for u in excess_users if u.id not in recently_matched_ids]
+                user_to_leave_out = random.choice(candidates) if candidates else random.choice(excess_users)
+            else:
+                user_to_leave_out = random.choice(excess_users)
+
+            excess_users.remove(user_to_leave_out)
+            users_left_out.append(user_to_leave_out)
+            print(f"Leaving out {excess_gender} user {user_to_leave_out.id} ({user_to_leave_out.email})")
+
+            if excess_gender == "male":
+                male_users = excess_users
+                female_users = base_users
+            else:
+                female_users = excess_users
+                male_users = base_users
+
+        # --------------------------
+        # 7️⃣ Shuffle and create new matches
+        # --------------------------
+        random.shuffle(male_users)
+        random.shuffle(female_users)
+
+        matches_created = 0
+        for i in range(min(len(male_users), len(female_users))):
+            u1 = male_users[i]
+            u2 = female_users[i]
+
+            if u1.id == u2.id or (u1.id, u2.id) in previous_pairs:
+                continue
+
+            pref1 = UserPreference.query.filter_by(
+                user_id=u1.id, preferred_user_id=u2.id, preference='reject'
+            ).first()
+            pref2 = UserPreference.query.filter_by(
+                user_id=u2.id, preferred_user_id=u1.id, preference='reject'
+            ).first()
+            if pref1 or pref2:
+                continue
+
+            visible_after = int((datetime.now(timezone.utc) + timedelta(minutes=20)).timestamp())
+            new_match = Match(
+                user1_id=u1.id,
+                user2_id=u2.id,
+                status='active',
+                matched_expired=False,
+                location_id=location_id,
+                visible_after=visible_after
+            )
+            db.session.add(new_match)
+            matches_created += 1
+            print(f"Created match: {u1.id} ↔ {u2.id}, visible after {visible_after}")
+
+        db.session.commit()
+        print(f"New round created at location {location_id}: {matches_created} matches")
+
+        return {
+            "location_id": location_id,
+            "total_users": len(checked_in_users),
+            "male_users": len(male_users),
+            "female_users": len(female_users),
+            "matches_created": matches_created,
+            "users_left_out": [u.email for u in users_left_out],
+        }
+
+    except Exception as e:
+        print(f"Error in trigger_matchmaking_for_location: {str(e)}")
+        db.session.rollback()
+        return None
+
+
+
+# Above is all new changes to code for matchmaking to prevent duplicates on frontend!
+
 
 
 @app.route('/matches/<email>', methods=['GET'])
@@ -285,7 +535,7 @@ def get_user_matches(email):
                 Match.user1_id == user.id,
                 Match.user2_id == user.id
             ),
-            Match.consent != 'deleted',
+            Match.status != 'deleted',
             Match.visible_after <= get_unix_timestamp(current_time)
         ).all()
 
@@ -309,20 +559,20 @@ def get_user_matches(email):
                 user_id=other_user_id, preferred_user_id=user.id
             ).first()
 
-            # Determine match consent from user's perspective
-            if match.consent == 'active':
+            # Determine match status from user's perspective
+            if match.status == 'active':
                 # Both liked each other
-                display_consent = 'matched'
+                display_status = 'matched'
                 show_message_button = True
-            else:  # consent is 'pending'
+            else:  # status is 'pending'
                 if user_pref and user_pref.preference == 'save_later':
-                    display_consent = 'decide'  # User needs to decide
+                    display_status = 'decide'  # User needs to decide
                     show_message_button = False
                 elif other_pref and other_pref.preference == 'save_later':
-                    display_consent = 'pending'  # Waiting for other user
+                    display_status = 'pending'  # Waiting for other user
                     show_message_button = False
                 else:
-                    display_consent = 'pending'  # Generic pending
+                    display_status = 'pending'  # Generic pending
                     show_message_button = False
 
             # Get profile image
@@ -339,7 +589,7 @@ def get_user_matches(email):
                 'email': other_user.email,
                 'age': other_user_data.age,
                 'bio': other_user_data.bio,
-                'consent': display_consent,
+                'status': display_status,
                 'show_message_button': show_message_button,
                 'match_date': match.match_date,
                 'image_url': image_url
@@ -420,7 +670,7 @@ def update_match_status():
                 db.session.add(new_pref)
 
             # Mark match as deleted
-            match.consent = 'deleted'
+            match.status = 'deleted'
 
         db.session.commit()
 
@@ -429,63 +679,6 @@ def update_match_status():
     except Exception as e:
         print(f"Error in update_match_status: {str(e)}")
         return jsonify({'error': 'Internal Server Error'}), 500
-
-
-# I changed this, be aware!
-def process_potential_match(user1_id, user2_id):
-    """
-    Process potential match between two users based on their preferences and location.
-    """
-
-    # Get preferences in both directions
-    pref1 = UserPreference.query.filter_by(user_id=user1_id, preferred_user_id=user2_id).first()
-    pref2 = UserPreference.query.filter_by(user_id=user2_id, preferred_user_id=user1_id).first()
-
-    # If either preference doesn't exist yet, no match to process
-    if not pref1 or not pref2:
-        return
-
-    # Check if there's an existing match
-    existing_match = Match.query.filter(
-        or_(
-            and_(Match.user1_id == user1_id, Match.user2_id == user2_id),
-            and_(Match.user1_id == user2_id, Match.user2_id == user1_id)
-        )
-    ).first()
-
-    # Case I: Both users like each other
-    if pref1.preference == 'like' and pref2.preference == 'like':
-        if existing_match:
-            # Update match consent
-            existing_match.consent = 'active'
-            existing_match.visible_after = get_unix_timestamp(datetime.now(timezone.utc) + timedelta(minutes=20))
-        else:
-            # Create new match with 20 minute delay
-            new_match = Match(
-                user1_id=user1_id,
-                user2_id=user2_id,
-                visible_after=get_unix_timestamp(datetime.now(timezone.utc) + timedelta(minutes=20)),
-                consent='active'
-            )
-            db.session.add(new_match)
-    # Case II: One or both users rejected
-    elif pref1.preference == 'reject' or pref2.preference == 'reject':
-        if existing_match:
-            # Mark match as deleted
-            existing_match.consent = 'deleted'
-    # Case III & IV: Save for later scenarios
-    elif pref1.preference == 'save_later' or pref2.preference == 'save_later':
-        # Only proceed if neither preference is 'reject'
-        if pref1.preference != 'reject' and pref2.preference != 'reject':
-            if not existing_match:
-                # Create pending match
-                new_match = Match(
-                    user1_id=user1_id,
-                    user2_id=user2_id,
-                    consent='pending',
-                    visible_after=get_unix_timestamp(datetime.now(timezone.utc))  # Visible immediately, but pending
-                )
-                db.session.add(new_match)
 
 
 def get_match_score(user1_data, user2_data):
@@ -531,7 +724,7 @@ def get_match_status(user_id, other_user_id):
                 Match.user1_id == user_id,
                 Match.user2_id == user_id
             ),
-            Match.consent != 'deleted',
+            Match.status != 'deleted',
             Match.visible_after <= current_time
         ).all()
         for match in matches:
@@ -542,25 +735,25 @@ def get_match_status(user_id, other_user_id):
             if matched_user_id != other_user_id:
                 continue
 
-            # Determine match consent from user's perspective
-            if match.consent == 'active':
+            # Determine match status from user's perspective
+            if match.status == 'active':
                 # Both liked each other
-                display_consent = 'matched'
+                display_status = 'matched'
                 show_message_button = True
-            else:  # consent is 'pending'
+            else:  # status is 'pending'
                 if user_pref and user_pref.preference == 'save_later':
-                    display_consent = 'decide'  # User needs to decide
+                    display_status = 'decide'  # User needs to decide
                     show_message_button = False
                 elif other_pref and other_pref.preference == 'save_later':
-                    display_consent = 'pending'  # Waiting for other user
+                    display_status = 'pending'  # Waiting for other user
                     show_message_button = False
                 else:
-                    display_consent = 'pending'  # Generic pending
+                    display_status = 'pending'  # Generic pending
                     show_message_button = False
-            return [display_consent, show_message_button]
+            return [display_status, show_message_button]
         return ""
     except Exception as e:
-        print(f"Error in get_consent: {str(e)}")
+        print(f"Error in get_status: {str(e)}")
         return ""
 
 
@@ -589,8 +782,8 @@ def get_user_matches(user_id, limit=5):
         # Get existing matches and preferences to avoid duplicates
         existing_matches = Match.query.filter(
             or_(Match.user1_id == user_id, Match.user2_id == user_id),
-            # and_(Match.consent != 'deleted', Match.consent != 'active')
-            Match.consent != 'deleted'
+            # and_(Match.status != 'deleted', Match.status != 'active')
+            Match.status != 'deleted'
         ).all()
 
         existing_preferences = UserPreference.query.filter_by(user_id=user_id).all()
@@ -770,6 +963,9 @@ def match_all_users():
     except Exception as e:
         print(f"Error in match_all_users: {str(e)}")
         return {}
+
+
+
 
 
 # Given a user id returns the best 5 matches sorted
@@ -1103,30 +1299,19 @@ def postRelationshipsData():
 def upload_image():
     try:
         # Check if the request contains a file
-        if 'imageString' not in request.files:
-            print("❌ No imageString in request.files")
+        if 'image' not in request.files:
             return jsonify({"error": "No image file provided"}), 400
 
-        print("\n=== /upload_image called ===")
-        print("Received form keys:", list(request.form.keys()))
-        print("Received file keys:", list(request.files.keys()))
-
-        file = request.files['imageString']
+        file = request.files['image']
         new_email = request.form.get('email')
-        print("Email received:", new_email)
-
-        print(f"✅ Received file: {file.filename}, content-type={file.content_type}")
 
         # Check if email is provided
         if not new_email:
             return jsonify({"error": "Email is required"}), 400
 
-        print("Querying user by email...")
         user = Task.query.filter_by(email=new_email).first()
-        print("DB user lookup result:", user)
 
         if not user:
-            print("❌ No user found with this email")
             return jsonify({'error': "No user registered with this email"}), 400
 
         user_auth_id = user.id
@@ -1166,7 +1351,6 @@ def upload_image():
             return jsonify({"error": "Invalid image format"}), 400
 
     except Exception as e:
-        print("💥 Exception occurred in upload_image:", str(e))
         return jsonify({"error": str(e)}), 500
 
 
@@ -1368,13 +1552,12 @@ def checkin():
         current_time = datetime.now()
         time_diff = (current_time - event_time).total_seconds()
 
-        # Todo: Uncomment the following after testing
-        # if time_diff > 600:
-        #     location.checkin_closed = True  # Work: 41410282
-        #     db.session.commit()  # Work: 41410282
-        #     # Trigger matchmaking when time expires (even if slots aren't full)
-        #     trigger_matchmaking_for_location(location_id)
-        #     return jsonify({'message': 'Check-in period has ended (10 minutes after event time)'}), 400
+        if time_diff > 600:
+            location.checkin_closed = True  # Work: 41410282
+            db.session.commit()  # Work: 41410282
+            # Trigger matchmaking when time expires (even if slots aren't full)
+            trigger_matchmaking_for_location(location_id)
+            return jsonify({'message': 'Check-in period has ended (10 minutes after event time)'}), 400
     except Exception as e:
         print(f"Error parsing event time: {str(e)}")
 
@@ -1447,6 +1630,7 @@ def get_unix_timestamp(datatime):
 
     return unix_ts
 
+
 @app.route('/matches_at_location/<int:user_id>/<int:location_id>', methods=['GET'])
 def get_user_matches_for_location(user_id, location_id):
     try:
@@ -1465,16 +1649,25 @@ def get_user_matches_for_location(user_id, location_id):
             ))
             .filter(
                 or_(Match.user1_id == user_id, Match.user2_id == user_id),
-
                 Match.status == 'active',
-
-                CheckIn.location_id == location_id
+                Match.location_id == location_id
             )
+            .order_by(desc(Match.visible_after))
             .all()
         )
 
         if len(existing_matches) == 0:
-            return jsonify({'message': 'No match found for this event'}), 400
+            return jsonify({'message': 'No matches left for this event'}), 400
+
+        preferences = (UserPreference.query
+                       .filter(
+                            or_(UserPreference.user_id == user_id, UserPreference.preferred_user_id == user_id)
+                       ).all())
+
+        preference_pairs = set()
+        for pref in preferences:
+            preference_pairs.add((pref.user_id, pref.preferred_user_id))
+            preference_pairs.add((pref.preferred_user_id, pref.user_id)) # Add reverse pair also
 
         # Format results with matches
         result = []
@@ -1482,6 +1675,11 @@ def get_user_matches_for_location(user_id, location_id):
 
             matched_user_id = int(
                 match.user2_id if match.user1_id == user_id else match.user1_id)  # get opposite match id
+
+            # Checking if this match already has a preference available
+            if (user_id, matched_user_id) in preference_pairs:
+                print(f"SKIPPING: Existing preference found")
+                continue
 
             # Get user image if available
             user_image = UserImages.query.filter_by(user_auth_id=matched_user_id).first()
@@ -1504,220 +1702,19 @@ def get_user_matches_for_location(user_id, location_id):
                 'phone_number': other_user_data.phone_number,
                 'image_url': image_url,
                 'status': match.status,
-                'consent': match.consent,                
+                'location': match.location_id,
                 'current_server_time': get_unix_timestamp(datetime.now(timezone.utc)),
                 'visible_after': match.visible_after
             })
+
+        if len(result) == 0:
+            return jsonify({'message': 'No matches left for this event'}), 400
 
         return jsonify({'matches': result})
 
     except Exception as e:
         print(f"Error in get_user_matches: {str(e)}")
         return jsonify({'matches': []})
-
-
-def trigger_matchmaking_for_location(location_id):
-    """
-    Trigger automatic matchmaking for all checked-in users at a specific location.
-    This is called when all slots are filled or check-in period ends.
-    """
-    try:
-        # Get all users who checked in to this location
-        checkins = CheckIn.query.filter_by(location_id=location_id).all()
-        checked_in_user_ids = [checkin.user_id for checkin in checkins]
-
-        print(f"Triggered matchmaking for location {location_id}")
-
-        if len(checked_in_user_ids) < 2:
-            print(f"Not enough users checked in for matchmaking at location {location_id}")
-            return None
-
-        # Get location details for matchmaking
-        location = LocationInfo.query.get(location_id)
-        if not location:
-            print(f"Location {location_id} not found")
-            return None
-
-        # Get the actual checked-in users
-        checked_in_users = []
-        for user_id in checked_in_user_ids:
-            user = Task.query.get(user_id)
-            if user:
-                checked_in_users.append(user)
-
-        if len(checked_in_users) < 2:
-            print(f"Not enough valid users for matchmaking at location {location_id}")
-            return None
-
-        # Query to get all existing active matches at this location for all the checked in users
-        existing_matches = (
-            db.session.query(Match)
-            .filter(
-                Match.status == 'active',
-                or_(
-                    Match.user1_id.in_(checked_in_user_ids),
-                    Match.user2_id.in_(checked_in_user_ids)
-                ),
-                Match.location_id == location_id,
-            )
-            .all()
-        )
-
-        existing_matches_tuple = []
-        if existing_matches:
-            for match in existing_matches:
-                user_1 = match.user1_id
-                user_2 = match.user2_id
-                existing_matches_tuple.append((user_1, user_2))
-                existing_matches_tuple.append((user_2, user_1))
-
-        # Separate users by gender for proper matching
-        male_users = []
-        female_users = []
-
-        for user in checked_in_users:
-            user_data = UserData.query.filter_by(user_auth_id=user.id).first()
-            if user_data and user_data.gender:
-                gender = user_data.gender.lower()
-                if gender in ['men', 'man', 'male']:
-                    male_users.append(user)
-                elif gender in ['women', 'woman', 'female']:
-                    female_users.append(user)
-
-        print(f"Checked-in users: {len(checked_in_users)}, Male: {len(male_users)}, Female: {len(female_users)}")
-
-        # Create ALL possible matches between opposite genders
-        matches_created = 0
-        users_left_out = []
-
-        # Handle odd numbers with fair rotation
-        if len(male_users) != len(female_users):
-            # Determine which gender has more users
-            if len(male_users) > len(female_users):
-                excess_users = male_users
-                base_users = female_users
-                excess_gender = "male"
-            else:
-                excess_users = female_users
-                base_users = male_users
-                excess_gender = "female"
-
-            # Get the last matchmaking session to determine who was left out
-            last_matchmaking = Match.query.order_by(Match.match_date.desc()).first()
-
-            # Implement fair rotation
-            if last_matchmaking:
-                # Check who was left out in the last session
-                last_match_date = last_matchmaking.match_date
-                recent_matches = Match.query.filter(
-                    Match.match_date >= last_match_date - timedelta(hours=1)
-                ).all()
-
-                # Get users who were matched recently
-                recently_matched = set()
-                for match in recent_matches:
-                    recently_matched.add(match.user1_id)
-                    recently_matched.add(match.user2_id)
-
-                # Find users who were NOT matched recently (potential candidates to leave out)
-                unmatched_candidates = [user for user in excess_users if user.id not in recently_matched]
-
-                if unmatched_candidates:
-                    # Leave out a different user this time
-                    user_to_leave_out = random.choice(unmatched_candidates)
-                    excess_users.remove(user_to_leave_out)
-                    users_left_out.append(user_to_leave_out)
-                    print(
-                        f"Fair rotation: Leaving out {excess_gender} user {user_to_leave_out.id} ({user_to_leave_out.email}) this time")
-                else:
-                    # If no recent matches, just leave out a random user
-                    user_to_leave_out = random.choice(excess_users)
-                    excess_users.remove(user_to_leave_out)
-                    users_left_out.append(user_to_leave_out)
-                    print(
-                        f"Random rotation: Leaving out {excess_gender} user {user_to_leave_out.id} ({user_to_leave_out.email})")
-            else:
-                # First time matchmaking, leave out a random user
-                user_to_leave_out = random.choice(excess_users)
-                excess_users.remove(user_to_leave_out)
-                users_left_out.append(user_to_leave_out)
-                print(
-                    f"First time: Leaving out {excess_gender} user {user_to_leave_out.id} ({user_to_leave_out.email})")
-
-            # Now we have equal numbers - use the updated lists
-            if excess_gender == "male":
-                male_users = excess_users
-                female_users = base_users
-            else:
-                male_users = base_users
-                female_users = excess_users
-
-        # Shuffle both lists to ensure random matching
-        random.shuffle(male_users)
-        random.shuffle(female_users)
-
-        # Create matches one-to-one
-        for i in range(min(len(male_users), len(female_users))):
-            male_user = male_users[i]
-            female_user = female_users[i]
-
-            # CRITICAL FIX: Prevent self-matching
-            if male_user.id == female_user.id:
-                print(f"SKIPPING: Self-match detected for user {male_user.id}")
-                continue
-
-            if (male_user.id, female_user.id) in existing_matches_tuple:
-                print(f"SKIPPING: Existing match found ({male_user.id}, {female_user.id}) with active status")
-                continue
-
-            # Get user preferences
-            user_pref = UserPreference.query.filter_by(
-                user_id=male_user.id, preferred_user_id=female_user.id
-            ).first()
-
-            other_pref = UserPreference.query.filter_by(
-                user_id=female_user.id, preferred_user_id=male_user.id
-            ).first()
-
-            if user_pref and user_pref.preference == 'reject':
-                print(f"SKIPPING: Preference already rejected for user {male_user.id}")
-                continue
-            elif other_pref and other_pref.preference == 'reject':
-                print(f"SKIPPING: Preference already rejected for user {female_user.id}")
-                continue
-
-            visible_after_timestamp = get_unix_timestamp(datetime.now(timezone.utc) + timedelta(minutes=20))
-            # Create mutual match
-            new_match = Match(
-                user1_id=male_user.id,
-                user2_id=female_user.id,
-                status='active',
-                location_id=location_id,
-                visible_after=visible_after_timestamp
-            )
-            db.session.add(new_match)
-            matches_created += 1
-            print(
-                f"At: {datetime.now(timezone.utc)}, Created mutual match: User {male_user.id} ({male_user.email}) ↔ User {female_user.id} ({female_user.email}), visible after: {visible_after_timestamp}")
-
-        db.session.commit()
-        print(f"Automatic matchmaking completed for location {location_id}: {matches_created} matches created")
-
-        # Return summary for debugging
-        return {
-            'location_id': location_id,
-            'total_users': len(checked_in_users),
-            'male_users': len(male_users),
-            'female_users': len(female_users),
-            'matches_created': matches_created,
-            'users_left_out': [user.email for user in users_left_out],
-            'matches_per_user': matches_created // len(male_users) if male_users else 0
-        }
-
-    except Exception as e:
-        print(f"Error in automatic matchmaking: {str(e)}")
-        db.session.rollback()
-        return None
 
 
 @app.route('/attend', methods=['POST'])
@@ -1847,80 +1844,34 @@ def get_signin_data():
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
-    # Get text fields from form-data
     sender_email = request.form.get('sender_email')
     receiver_email = request.form.get('receiver_email')
     message = request.form.get('message')
-    reply_to_id = request.form.get('reply_to_id', type=int)
-    
-    # Get uploaded file
-    image_file = request.files.get('image_url')  # must match input name
 
-    # Initialize image_url to None
-    image_url = None
+    # Check if any of the fields are missing
+    if not sender_email or not receiver_email or not message:
+        return jsonify({'error': 'Missing data'}), 400
 
-    # Validate at least message or image
-    if not message and not image_file:
-        return jsonify({'error': 'Message or image is required'}), 400
-
-    # Handle file upload
-    # Handle file upload
-    if image_file:
-        if allowed_file(image_file.filename):
-            filename = generate_temp_filename(image_file)
-            image_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            image_url = filename
-        else:
-            return jsonify({'error': 'Invalid file type'}), 400
-        
-
-    # Check sender and receiver
+    # Look up user IDs based on emails
     sender = Task.query.filter_by(email=sender_email).first()
     receiver = Task.query.filter_by(email=receiver_email).first()
+
     if not sender or not receiver:
         return jsonify({'error': 'Sender or receiver not found'}), 404
 
-    # Handle reply reference
-    reply_obj = None
-    if reply_to_id:
-        original_msg = Message.query.get(reply_to_id)
-        if original_msg:
-            original_sender = Task.query.get(original_msg.sender_id)
-            reply_obj = {
-                'id': original_msg.id,
-                'message': original_msg.message,
-                'sender_email': original_sender.email if original_sender else ""
-            }
-
-    # Create message record
-    new_message = Message(
-        sender_id=sender.id,
-        receiver_id=receiver.id,
-        message=message,
-        image_url=image_url,  # safe now, always defined
-        reply_to_id=reply_to_id
-    )
+    # Store the message in the database
+    new_message = Message(sender_id=sender.id, receiver_id=receiver.id, message=message)
     db.session.add(new_message)
     db.session.commit()
 
-    # Emit via SocketIO (if applicable)
+    # Emit the message to the receiver's room using receiver's email
     socketio.emit('receive_message', {
-        'id': new_message.id,
         'sender_email': sender_email,
         'receiver_email': receiver_email,
-        'message': message,
-        'image_url': image_url,
-        'reply_to_id': reply_to_id,
-        'reply_to': reply_obj
+        'message': message
     }, room=receiver_email)
 
-    return jsonify({
-        'status': 'Message sent',
-        'id': new_message.id,
-        'image_url': image_url,
-        'reply_to_id': reply_to_id,
-        'reply_to': reply_obj
-    }), 200
+    return jsonify({'status': 'Message sent'})
 
 
 @socketio.on('send_message')
@@ -1928,57 +1879,25 @@ def handle_message(data):
     sender_email = data['sender_email']
     receiver_email = data['receiver_email']
     message = data['message']
-    image_url = data.get('image_url')  # optional
-    reply_to_id = data['reply_to_id']
-    reply_obj = data['reply_obj']
-    
+
     # Look up user IDs based on emails
     sender = Task.query.filter_by(email=sender_email).first()
     receiver = Task.query.filter_by(email=receiver_email).first()
-    
 
     if not sender or not receiver:
         emit('error', {'error': 'Sender or receiver not found'})
         return
-    
-        # Require at least a message or image
-    if not message and not image_url:
-        emit('error', {'error': 'Message or image is required'})
-        return
-    
-    reply_obj = None
-    if reply_to_id:
-        original_msg = Message.query.get(reply_to_id)
-        if original_msg:
-            original_sender = Task.query.get(original_msg.sender_id)
-            reply_obj = {
-                'id': original_msg.id,
-                'message': original_msg.message,
-                'sender_email': original_sender.email if original_sender else ""
-            }
 
     # Store the message in the database
-    new_message = Message(
-        sender_id=sender.id, 
-        receiver_id=receiver.id, 
-        message=message,
-        image_url=image_url, 
-        reply_to_id=reply_to_id,
-        )
-    
+    new_message = Message(sender_id=sender.id, receiver_id=receiver.id, message=message)
     db.session.add(new_message)
     db.session.commit()
-
 
     # Emit the message to the receiver's room using receiver's email
     emit('receive_message', {
         'sender_email': sender_email,
         'receiver_email': receiver_email,
-        'message': message,
-        'image_url': image_url,        
-        'reply_to_id': reply_to_id,
-        'reply_to': reply_obj
-        
+        'message': message
     }, room=receiver_email)
 
 
@@ -2019,21 +1938,11 @@ def get_chats():
     # Prepare the chat history for response, adding sender and receiver emails
     chat_history = [
         {
-            'id': msg.id,  # ✅ include the message ID
             'sender_id': msg.sender_id,
             'sender_email': user1.email if msg.sender_id == user1.id else user2.email,
             'receiver_id': msg.receiver_id,
             'receiver_email': user2.email if msg.receiver_id == user2.id else user1.email,
             'message': msg.message,
-            'image_url': msg.image_url,  # ✅ Added field
-            'reply_to_id': msg.reply_to_id,
-            'reply_to': {
-                'id': msg.reply_to.id,
-                'message': msg.reply_to.message,
-                'image_url': msg.reply_to.image_url,  # ✅ Include in replies too
-                'sender_id': msg.reply_to.sender_id,
-                'sender_email': user1.email if msg.reply_to.sender_id == user1.id else user2.email
-        } if msg.reply_to else None,
             'timestamp': msg.timestamp
         }
         for msg in messages
