@@ -186,7 +186,6 @@ def has_user_checked_in(user_id, location_id):
     return db.session.query(CheckIn).filter_by(user_id=user_id, location_id=location_id).first() is not None
 
 
-
 def is_round_complete(location_id):
     """
     Returns True if all active matches at the location have preferences from both users.
@@ -341,9 +340,8 @@ def set_preference():
 def trigger_matchmaking_for_location(location_id):
     """
     Trigger automatic matchmaking for all checked-in users at a specific location.
-    Each round creates 1:1 male-female matches.
-    - matched_expired = False for new matches
-    - previous active matches are marked expired before new round starts
+    Uses a deterministic round-robin rotation system so every male-female pair
+    occurs exactly once across multiple rounds.
     """
     try:
         # --------------------------
@@ -400,16 +398,7 @@ def trigger_matchmaking_for_location(location_id):
             return None
 
         # --------------------------
-        # 4️⃣ Avoid rematching same pairs
-        # --------------------------
-        previous_matches = Match.query.filter(Match.location_id == location_id).all()
-        previous_pairs = set()
-        for m in previous_matches:
-            previous_pairs.add((m.user1_id, m.user2_id))
-            previous_pairs.add((m.user2_id, m.user1_id))
-
-        # --------------------------
-        # 5️⃣ Separate users by gender
+        # 4️⃣ Separate users by gender
         # --------------------------
         male_users, female_users = [], []
         for u in checked_in_users:
@@ -427,56 +416,44 @@ def trigger_matchmaking_for_location(location_id):
             return None
 
         # --------------------------
-        # 6️⃣ Fair rotation for odd counts
+        # 5️⃣ Handle uneven numbers (optional)
         # --------------------------
         users_left_out = []
-
         if len(male_users) != len(female_users):
             if len(male_users) > len(female_users):
-                excess_users, base_users, excess_gender = male_users, female_users, "male"
+                user_to_leave_out = random.choice(male_users)
+                male_users.remove(user_to_leave_out)
+                users_left_out.append(user_to_leave_out)
             else:
-                excess_users, base_users, excess_gender = female_users, male_users, "female"
-
-            last_match = Match.query.order_by(Match.match_date.desc()).first()
-            if last_match:
-                recent_matches = Match.query.filter(
-                    Match.match_date >= last_match.match_date - timedelta(hours=1)
-                ).all()
-                recently_matched_ids = set()
-                for m in recent_matches:
-                    recently_matched_ids.add(m.user1_id)
-                    recently_matched_ids.add(m.user2_id)
-
-                candidates = [u for u in excess_users if u.id not in recently_matched_ids]
-                user_to_leave_out = random.choice(candidates) if candidates else random.choice(excess_users)
-            else:
-                user_to_leave_out = random.choice(excess_users)
-
-            excess_users.remove(user_to_leave_out)
-            users_left_out.append(user_to_leave_out)
-            print(f"Leaving out {excess_gender} user {user_to_leave_out.id} ({user_to_leave_out.email})")
-
-            if excess_gender == "male":
-                male_users = excess_users
-                female_users = base_users
-            else:
-                female_users = excess_users
-                male_users = base_users
+                user_to_leave_out = random.choice(female_users)
+                female_users.remove(user_to_leave_out)
+                users_left_out.append(user_to_leave_out)
 
         # --------------------------
-        # 7️⃣ Shuffle and create new matches
+        # 6️⃣ 🆕 Determine current round number (based on history)
         # --------------------------
-        random.shuffle(male_users)
-        random.shuffle(female_users)
+        total_matches = Match.query.filter_by(location_id=location_id).count()
+        round_number = 0
+        if male_users and female_users:
+            round_number = total_matches // min(len(male_users), len(female_users))
+        print(f"🌀 Starting round {round_number + 1} at location {location_id}")
 
+        # --------------------------
+        # 7️⃣ 🆕 Round-robin pairing logic
+        # --------------------------
+        def get_round_robin_pairs(males, females, round_num):
+            n = min(len(males), len(females))
+            rotated_females = females[round_num % n:] + females[:round_num % n]
+            return [(males[i], rotated_females[i]) for i in range(n)]
+
+        pairs = get_round_robin_pairs(male_users, female_users, round_number)
+
+        # --------------------------
+        # 8️⃣ Create matches
+        # --------------------------
         matches_created = 0
-        for i in range(min(len(male_users), len(female_users))):
-            u1 = male_users[i]
-            u2 = female_users[i]
-
-            if u1.id == u2.id or (u1.id, u2.id) in previous_pairs:
-                continue
-
+        for u1, u2 in pairs:
+            # Skip if either user previously rejected the other
             pref1 = UserPreference.query.filter_by(
                 user_id=u1.id, preferred_user_id=u2.id, preference='reject'
             ).first()
@@ -497,14 +474,14 @@ def trigger_matchmaking_for_location(location_id):
             )
             db.session.add(new_match)
             matches_created += 1
-            print(f"Created match: {u1.id} ↔ {u2.id}, visible after {visible_after}")
+            print(f"✅ Created round {round_number + 1} match: {u1.id} ↔ {u2.id}")
 
         db.session.commit()
-        print(f"New round created at location {location_id}: {matches_created} matches")
+        print(f"🎯 Round {round_number + 1} created at location {location_id}: {matches_created} matches")
 
         return {
             "location_id": location_id,
-            "total_users": len(checked_in_users),
+            "round_number": round_number + 1,
             "male_users": len(male_users),
             "female_users": len(female_users),
             "matches_created": matches_created,
@@ -964,9 +941,6 @@ def match_all_users():
     except Exception as e:
         print(f"Error in match_all_users: {str(e)}")
         return {}
-
-
-
 
 
 # Given a user id returns the best 5 matches sorted
