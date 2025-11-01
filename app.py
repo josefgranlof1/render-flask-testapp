@@ -417,7 +417,9 @@ def trigger_matchmaking_for_location(location_id):
             print(f"⚠️ Location {location_id} not found")
             return None
 
-        current_round = location.current_round or 1
+        current_round = (location.current_round or 1) - 1
+        if current_round < 1:
+            current_round = 1
         print(f"Starting round {current_round} at location {location_id}")
 
         # --------------------------
