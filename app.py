@@ -372,7 +372,8 @@ def set_preference():
 def trigger_matchmaking_for_location(location_id):
     """
     Trigger automatic matchmaking for all checked-in users at a specific location.
-    - Ensures all male-female pairs are used before repeating.
+    - Only create matches that have never occurred at this location.
+    - Each user appears only once per round.
     - Automatically expires previous round matches and increments round counter.
     """
     try:
@@ -439,13 +440,10 @@ def trigger_matchmaking_for_location(location_id):
         female_ids = [u.id for u in females]
 
         # --------------------------
-        # 5️⃣ Determine previously paired users
+        # 5️⃣ Determine previously paired users at this location
         # --------------------------
         previous_matches = Match.query.filter_by(location_id=location_id).all()
-        previous_pairs = set()
-        for m in previous_matches:
-            previous_pairs.add((m.user1_id, m.user2_id))
-            previous_pairs.add((m.user2_id, m.user1_id))
+        previous_pairs = set((m.user1_id, m.user2_id) for m in previous_matches)
 
         # --------------------------
         # 6️⃣ Generate all possible male-female pairs
@@ -453,11 +451,9 @@ def trigger_matchmaking_for_location(location_id):
         all_pairs = list(product(male_ids, female_ids))
         available_pairs = [pair for pair in all_pairs if pair not in previous_pairs]
 
-        # If all pairs used, start a new cycle
         if not available_pairs:
-            print("All possible pairs used. Starting a new cycle.")
-            available_pairs = all_pairs
-            # Optionally: could also reset Match.round_number or history
+            print(f"No new matches available at location {location_id}. All pairs have already been used.")
+            return None
 
         # --------------------------
         # 7️⃣ Select pairs for the round (one match per user)
@@ -469,6 +465,8 @@ def trigger_matchmaking_for_location(location_id):
                 selected_pairs.append((m, f))
                 used_males.add(m)
                 used_females.add(f)
+            if len(selected_pairs) == min(len(male_ids), len(female_ids)):
+                break
 
         if not selected_pairs:
             print(f"No new pairs can be selected for round {current_round}")
