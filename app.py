@@ -10,7 +10,7 @@ from werkzeug.utils import secure_filename
 from sqlalchemy import or_, and_, desc
 from flask import request, jsonify
 from itertools import product
-
+from collections import deque
 
 app = Flask(__name__)
 app.config[
@@ -272,6 +272,62 @@ def process_potential_match(user1_id, user2_id):
         if existing_match:
             existing_match.status = 'deleted'
 
+def hopcroft_karp(males, females, allowed_pairs):
+    """
+    males: list of male user IDs
+    females: list of female user IDs
+    allowed_pairs: list of (male_id, female_id) tuples that can be paired
+    Returns: list of matched pairs [(male_id, female_id), ...]
+    """
+    # Build bipartite graph
+    graph = {m: [] for m in males}
+    for m, f in allowed_pairs:
+        graph[m].append(f)
+
+    pair_u = {m: None for m in males}      # male -> female
+    pair_v = {f: None for f in females}    # female -> male
+    dist = {}
+
+    def bfs():
+        queue = deque()
+        for u in males:
+            if pair_u[u] is None:
+                dist[u] = 0
+                queue.append(u)
+            else:
+                dist[u] = float('inf')
+        dist[None] = float('inf')
+
+        while queue:
+            u = queue.popleft()
+            if dist[u] < dist[None]:
+                for v in graph[u]:
+                    if dist[pair_v[v]] == float('inf'):
+                        dist[pair_v[v]] = dist[u] + 1
+                        queue.append(pair_v[v])
+        return dist[None] != float('inf')
+
+    def dfs(u):
+        if u is None:
+            return True
+        for v in graph[u]:
+            if dist[pair_v[v]] == dist[u] + 1:
+                if dfs(pair_v[v]):
+                    pair_u[u] = v
+                    pair_v[v] = u
+                    return True
+        dist[u] = float('inf')
+        return False
+
+    matching = 0
+    while bfs():
+        for u in males:
+            if pair_u[u] is None:
+                if dfs(u):
+                    matching += 1
+
+    return [(m, f) for m, f in pair_u.items() if f is not None]
+
 
 @app.route('/preference', methods=['POST'])
 def set_preference():
@@ -372,10 +428,10 @@ def set_preference():
 def trigger_matchmaking_for_location(location_id):
     """
     Trigger matchmaking for all checked-in users at a specific location.
+    - Maximal male-female matches per round using Hopcroft-Karp.
     - Each user appears only once per round.
     - Only create matches that have never occurred at this location.
     - Automatically expires previous round matches and increments round counter.
-    - Uses maximal matching to generate the largest possible number of matches per round.
     """
     try:
         # 1️⃣ Get location info
@@ -403,7 +459,6 @@ def trigger_matchmaking_for_location(location_id):
         # 3️⃣ Get checked-in users
         checkins = CheckIn.query.filter_by(location_id=location_id).all()
         user_ids = [c.user_id for c in checkins]
-
         if len(user_ids) < 2:
             print(f"Not enough users for matchmaking at location {location_id}")
             return None
@@ -433,27 +488,16 @@ def trigger_matchmaking_for_location(location_id):
         previous_matches = Match.query.filter_by(location_id=location_id).all()
         previous_pairs = set((m.user1_id, m.user2_id) for m in previous_matches)
 
-        # 6️⃣ Generate all possible male-female pairs that haven't occurred yet
-        all_pairs = [(m, f) for m, f in product(males, females) if (m, f) not in previous_pairs]
-
-        if not all_pairs:
-            print(f"No new matches available at location {location_id}. All pairs have already been used.")
+        # 6️⃣ Generate allowed pairs that haven't occurred yet
+        allowed_pairs = [(m, f) for m, f in product(males, females) if (m, f) not in previous_pairs]
+        if not allowed_pairs:
+            print(f"No new matches available at location {location_id}. All pairs used.")
             return None
 
-        # 7️⃣ Use maximal matching to select the largest set of non-overlapping pairs
-        selected_pairs = []
-        used_males, used_females = set(), set()
-        # Sort all pairs to prioritize users with fewer available options
-        for m, f in sorted(all_pairs, key=lambda p: (
-            sum(p[0] == x[0] for x in all_pairs) + sum(p[1] == x[1] for x in all_pairs)
-        )):
-            if m not in used_males and f not in used_females:
-                selected_pairs.append((m, f))
-                used_males.add(m)
-                used_females.add(f)
-
+        # 7️⃣ Maximal matching using Hopcroft-Karp
+        selected_pairs = hopcroft_karp(males, females, allowed_pairs)
         if not selected_pairs:
-            print(f"No new pairs can be selected for round {current_round}")
+            print(f"No new pairs could be selected for round {current_round}")
             return None
 
         # 8️⃣ Create matches
@@ -470,7 +514,7 @@ def trigger_matchmaking_for_location(location_id):
             )
             db.session.add(new_match)
 
-        # 9️⃣ Commit matches and increment round
+        # 9️⃣ Commit and increment round
         db.session.commit()
         location.current_round = current_round + 1
         db.session.commit()
