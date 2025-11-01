@@ -199,7 +199,7 @@ def get_previous_pairs(location_id):
 
 def is_round_complete(location_id):
     """
-    Returns True if all active matches at the location have preferences from both users.
+    Returns True if all active matches at a location have preferences from both users.
     """
     active_matches = Match.query.filter_by(location_id=location_id, status='active', matched_expired=False).all()
     if not active_matches:
@@ -253,13 +253,10 @@ def end_matchmaking_round(location_id):
 def process_potential_match(user1_id, user2_id):
     """
     Update existing match based on user preferences.
-    No new matches are created; round creation is handled separately.
+    If either user rejects, mark match as deleted.
     """
     pref1 = UserPreference.query.filter_by(user_id=user1_id, preferred_user_id=user2_id).first()
     pref2 = UserPreference.query.filter_by(user_id=user2_id, preferred_user_id=user1_id).first()
-
-    if not pref1 or not pref2:
-        return  # Wait until both preferences exist
 
     existing_match = Match.query.filter(
         or_(
@@ -268,9 +265,14 @@ def process_potential_match(user1_id, user2_id):
         )
     ).first()
 
-    if pref1.preference == 'reject' or pref2.preference == 'reject':
-        if existing_match:
-            existing_match.status = 'deleted'
+    if not existing_match:
+        return
+
+    # Reject logic
+    if (pref1 and pref1.preference == 'reject') or (pref2 and pref2.preference == 'reject'):
+        existing_match.status = 'deleted'
+        db.session.commit()
+
 
 def hopcroft_karp(males, females, allowed_pairs):
     """
@@ -328,63 +330,51 @@ def hopcroft_karp(males, females, allowed_pairs):
 
     return [(m, f) for m, f in pair_u.items() if f is not None]
 
-
 @app.route('/preference', methods=['POST'])
 def set_preference():
+    """
+    Save user preference and update match status.
+    Automatically ends round if all active matches have preferences.
+    """
     try:
         data = request.get_json()
         user_email = data.get('user_email')
         preferred_user_email = data.get('preferred_user_email')
         preference = data.get('preference')  # 'like', 'reject', 'save_later'
 
-        # --------------------------
-        # 1️⃣ Validate inputs
-        # --------------------------
+        # Validate inputs
         if not user_email or not preferred_user_email or not preference:
             return jsonify({'error': 'Missing required fields'}), 400
-
         if preference not in ['like', 'reject', 'save_later']:
             return jsonify({'error': 'Invalid preference type'}), 400
 
-        # --------------------------
-        # 2️⃣ Get both users
-        # --------------------------
+        # Get users
         user = Task.query.filter_by(email=user_email).first()
         preferred_user = Task.query.filter_by(email=preferred_user_email).first()
-
         if not user or not preferred_user:
             return jsonify({'error': 'One or both users not found'}), 404
 
-        # --------------------------
-        # 3️⃣ Add or update preference
-        # --------------------------
-        existing_preference = UserPreference.query.filter_by(
+        # Add or update preference
+        existing_pref = UserPreference.query.filter_by(
             user_id=user.id,
             preferred_user_id=preferred_user.id
         ).first()
-
-        if existing_preference:
-            existing_preference.preference = preference
-            existing_preference.timestamp = datetime.now(timezone.utc)
+        if existing_pref:
+            existing_pref.preference = preference
+            existing_pref.timestamp = datetime.now(timezone.utc)
         else:
-            new_preference = UserPreference(
+            new_pref = UserPreference(
                 user_id=user.id,
                 preferred_user_id=preferred_user.id,
                 preference=preference
             )
-            db.session.add(new_preference)
-
-        # --------------------------
-        # 4️⃣ Update match status
-        # --------------------------
-        # process_potential_match now handles rejection
-        process_potential_match(user.id, preferred_user.id)
-
+            db.session.add(new_pref)
         db.session.commit()
 
-        # --------------------------
-        # 5️⃣ Check if round is complete
-        # --------------------------
+        # Update match if needed
+        process_potential_match(user.id, preferred_user.id)
+
+        # Check if round is complete
         match = Match.query.filter(
             or_(
                 and_(Match.user1_id == user.id, Match.user2_id == preferred_user.id),
@@ -412,7 +402,6 @@ def set_preference():
                     'next_round_started': False
                 }), 200
         else:
-            print(f"⚠️ No active match found between {user.id} and {preferred_user.id}")
             return jsonify({
                 'message': f'Preference set to {preference}',
                 'round_status': 'unknown',
