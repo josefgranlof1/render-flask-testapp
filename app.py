@@ -391,13 +391,30 @@ def set_preference():
                 print(f"✅ Round complete for location {location_id}. Ending and starting next round...")
                 end_matchmaking_round(location_id)
                 trigger_matchmaking_for_location(location_id)
-
-        return jsonify({'message': f'Preference set to {preference}'}), 201
+                return jsonify({
+                    'message': f'Preference set to {preference}',
+                    'round_status': 'complete',
+                    'next_round_started': True
+                }), 200
+            else:
+                return jsonify({
+                    'message': f'Preference set to {preference}',
+                    'round_status': 'ongoing',
+                    'next_round_started': False
+                }), 200
+        else:
+            print(f"⚠️ No active match found between {user.id} and {preferred_user.id}")
+            return jsonify({
+                'message': f'Preference set to {preference}',
+                'round_status': 'unknown',
+                'next_round_started': False
+            }), 200
 
     except Exception as e:
         print(f"Error in set_preference: {str(e)}")
         db.session.rollback()
         return jsonify({'error': 'Internal Server Error'}), 500
+
 
 
 def trigger_matchmaking_for_location(location_id):
