@@ -440,10 +440,13 @@ def trigger_matchmaking_for_location(location_id):
         female_ids = [u.id for u in females]
 
         # --------------------------
-        # 5️⃣ Determine previously paired users at this location
+        # 5️⃣ Determine previously paired users at this location (bidirectional)
         # --------------------------
         previous_matches = Match.query.filter_by(location_id=location_id).all()
-        previous_pairs = set((m.user1_id, m.user2_id) for m in previous_matches)
+        previous_pairs = set()
+        for m in previous_matches:
+            previous_pairs.add((m.user1_id, m.user2_id))
+            previous_pairs.add((m.user2_id, m.user1_id))  # ✅ make bidirectional
 
         # --------------------------
         # 6️⃣ Generate all possible male-female pairs
@@ -466,7 +469,7 @@ def trigger_matchmaking_for_location(location_id):
                 used_males.add(m)
                 used_females.add(f)
             if len(selected_pairs) == min(len(male_ids), len(female_ids)):
-                break
+                break  # Only one match per user per round
 
         if not selected_pairs:
             print(f"No new pairs can be selected for round {current_round}")
