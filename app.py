@@ -1,5 +1,5 @@
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import re
 from email.policy import default
 from flask import Flask, jsonify, request, session, send_from_directory
@@ -7,10 +7,10 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO, join_room, send, emit
 import os
 from werkzeug.utils import secure_filename
-from datetime import datetime, timedelta
 from sqlalchemy import or_, and_, desc
 from flask import request, jsonify
 from itertools import product
+
 
 app = Flask(__name__)
 app.config[
@@ -187,12 +187,6 @@ with app.app_context():
 def has_user_checked_in(user_id, location_id):
     return db.session.query(CheckIn).filter_by(user_id=user_id, location_id=location_id).first() is not None
 
-def generate_all_pairs(males, females):
-    """
-    Returns a list of all possible (male, female) pairs.
-    """
-    return list(product(males, females))
-
 
 def get_previous_pairs(location_id):
     previous_matches = Match.query.filter(Match.location_id == location_id).all()
@@ -201,47 +195,6 @@ def get_previous_pairs(location_id):
         previous_pairs.add((m.user1_id, m.user2_id))
         previous_pairs.add((m.user2_id, m.user1_id))
     return previous_pairs
-
-
-def select_round_pairs(males, females, location_id):
-    all_pairs = generate_all_pairs(males, females)
-    previous_pairs = get_previous_pairs(location_id)
-
-    # Filter out pairs that already happened
-    available_pairs = [pair for pair in all_pairs if pair not in previous_pairs]
-
-    if not available_pairs:
-        print("All possible pairs have already been used! Resetting pair history.")
-        available_pairs = all_pairs
-        # Optionally, reset Match.round_number to 0 or delete history
-
-    # Shuffle and select pairs ensuring one user appears once per round
-    selected_pairs = []
-    used_males, used_females = set(), set()
-    for m, f in available_pairs:
-        if m not in used_males and f not in used_females:
-            selected_pairs.append((m, f))
-            used_males.add(m)
-            used_females.add(f)
-
-    return selected_pairs
-
-
-def create_matches_for_round(selected_pairs, location_id, current_round):
-    for m, f in selected_pairs:
-        visible_after = int((datetime.now(timezone.utc) + timedelta(minutes=20)).timestamp())
-        new_match = Match(
-            user1_id=m,
-            user2_id=f,
-            status='active',
-            matched_expired=False,
-            location_id=location_id,
-            visible_after=visible_after,
-            round_number=current_round
-        )
-        db.session.add(new_match)
-    db.session.commit()
-    print(f"✅ Round {current_round} created with {len(selected_pairs)} matches")
 
 
 def is_round_complete(location_id):
@@ -416,14 +369,11 @@ def set_preference():
         return jsonify({'error': 'Internal Server Error'}), 500
 
 
-
 def trigger_matchmaking_for_location(location_id):
     """
     Trigger automatic matchmaking for all checked-in users at a specific location.
-    Uses round-robin pairing for fair rotation across multiple rounds.
-    - matched_expired = False for new matches
-    - previous active matches are marked expired before new round starts
-    - avoids duplicate pairs from all previous rounds
+    - Ensures all male-female pairs are used before repeating.
+    - Automatically expires previous round matches and increments round counter.
     """
     try:
         # --------------------------
@@ -434,9 +384,7 @@ def trigger_matchmaking_for_location(location_id):
             print(f"⚠️ Location {location_id} not found")
             return None
 
-        current_round = (location.current_round or 1) - 1
-        if current_round < 1:
-            current_round = 1
+        current_round = location.current_round or 1
         print(f"Starting round {current_round} at location {location_id}")
 
         # --------------------------
@@ -447,7 +395,6 @@ def trigger_matchmaking_for_location(location_id):
             status='active',
             matched_expired=False
         ).all()
-
         for m in active_matches:
             m.status = 'expired'
             m.matched_expired = True
@@ -459,13 +406,13 @@ def trigger_matchmaking_for_location(location_id):
         # 3️⃣ Get checked-in users
         # --------------------------
         checkins = CheckIn.query.filter_by(location_id=location_id).all()
-        checked_in_user_ids = [c.user_id for c in checkins]
+        user_ids = [c.user_id for c in checkins]
 
-        if len(checked_in_user_ids) < 2:
-            print(f"Not enough users checked in for matchmaking at location {location_id}")
+        if len(user_ids) < 2:
+            print(f"Not enough users for matchmaking at location {location_id}")
             return None
 
-        users = [Task.query.get(uid) for uid in checked_in_user_ids if Task.query.get(uid)]
+        users = [Task.query.get(uid) for uid in user_ids if Task.query.get(uid)]
         if len(users) < 2:
             print(f"Not enough valid users for matchmaking at location {location_id}")
             return None
@@ -473,59 +420,84 @@ def trigger_matchmaking_for_location(location_id):
         # --------------------------
         # 4️⃣ Separate users by gender
         # --------------------------
-        male_users, female_users = [], []
+        males, females = [], []
         for u in users:
             udata = UserData.query.filter_by(user_auth_id=u.id).first()
             if not udata or not udata.gender:
                 continue
             gender = udata.gender.lower()
             if gender in ['male', 'man', 'men']:
-                male_users.append(u)
+                males.append(u)
             elif gender in ['female', 'woman', 'women']:
-                female_users.append(u)
+                females.append(u)
 
-        if not male_users or not female_users:
+        if not males or not females:
             print(f"No male-female pairs possible at location {location_id}")
             return None
+
+        male_ids = [u.id for u in males]
+        female_ids = [u.id for u in females]
 
         # --------------------------
         # 5️⃣ Determine previously paired users
         # --------------------------
-        previous_matches = Match.query.filter(Match.location_id == location_id).all()
+        previous_matches = Match.query.filter_by(location_id=location_id).all()
         previous_pairs = set()
         for m in previous_matches:
             previous_pairs.add((m.user1_id, m.user2_id))
             previous_pairs.add((m.user2_id, m.user1_id))
 
         # --------------------------
-        # 6️⃣ Round-robin pairing logic
+        # 6️⃣ Generate all possible male-female pairs
         # --------------------------
-        n = min(len(male_users), len(female_users))
-        rotated_females = female_users[current_round % n:] + female_users[:current_round % n]
+        all_pairs = list(product(male_ids, female_ids))
+        available_pairs = [pair for pair in all_pairs if pair not in previous_pairs]
 
+        # If all pairs used, start a new cycle
+        if not available_pairs:
+            print("All possible pairs used. Starting a new cycle.")
+            available_pairs = all_pairs
+            # Optionally: could also reset Match.round_number or history
+
+        # --------------------------
+        # 7️⃣ Select pairs for the round (one match per user)
+        # --------------------------
         selected_pairs = []
-        for i in range(n):
-            u1, u2 = male_users[i], rotated_females[i]
-            if (u1.id, u2.id) in previous_pairs:
-                continue
-            selected_pairs.append((u1.id, u2.id))
+        used_males, used_females = set(), set()
+        for m, f in available_pairs:
+            if m not in used_males and f not in used_females:
+                selected_pairs.append((m, f))
+                used_males.add(m)
+                used_females.add(f)
 
         if not selected_pairs:
-            print(f"No new pairs possible for round {current_round} at location {location_id}")
+            print(f"No new pairs can be selected for round {current_round}")
             return None
 
         # --------------------------
-        # 7️⃣ Create matches for the round
+        # 8️⃣ Create matches
         # --------------------------
-        create_matches_for_round(selected_pairs, location_id, current_round)
+        for m, f in selected_pairs:
+            visible_after = int((datetime.now(timezone.utc) + timedelta(minutes=20)).timestamp())
+            new_match = Match(
+                user1_id=m,
+                user2_id=f,
+                status='active',
+                matched_expired=False,
+                location_id=location_id,
+                visible_after=visible_after,
+                round_number=current_round
+            )
+            db.session.add(new_match)
 
         # --------------------------
-        # 8️⃣ Increment round for next trigger
+        # 9️⃣ Commit matches and increment round
         # --------------------------
+        db.session.commit()
         location.current_round = current_round + 1
         db.session.commit()
-        print(f"✅ Finished round {current_round} at location {location_id}")
 
+        print(f"✅ Round {current_round} created with {len(selected_pairs)} matches")
         return {
             "location_id": location_id,
             "round": current_round,
@@ -538,9 +510,7 @@ def trigger_matchmaking_for_location(location_id):
         return None
 
 
-
 # Above is all new changes to code for matchmaking to prevent duplicates on frontend!
-
 
 
 @app.route('/matches/<email>', methods=['GET'])
