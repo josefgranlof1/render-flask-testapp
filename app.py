@@ -14,7 +14,7 @@ from collections import deque
 
 app = Flask(__name__)
 app.config[
-    'SQLALCHEMY_DATABASE_URI'] = "postgresql://wings301_render_example_user:h53A7tW32BLqZCw2CT0X4M7EX0zJyDHv@dpg-d432p1buibrs73ak2cpg-a.frankfurt-postgres.render.com/wings301_render_example"
+    'SQLALCHEMY_DATABASE_URI'] = "postgresql://wings401_render_example_user:6v6ZI950JABagGCwH8TYLwLnyZkqqxwr@dpg-d43jegripnbc73bvq9p0-a.frankfurt-postgres.render.com/wings401_render_example"
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
