@@ -236,11 +236,9 @@ def end_matchmaking_round(location_id):
     # 2️⃣ Increment current round
     location = LocationInfo.query.get(location_id)
     if location:
-        if not location.current_round or location.current_round < 1:
-            location.current_round = 1
-        else:
-            location.current_round += 1
-        print(f"🔁 Incremented round for location {location_id} to {location.current_round}")
+        prev_round = location.current_round or 0
+        location.current_round = prev_round + 1
+        print(f"🔁 Incremented round for location {location_id} from {prev_round} ➜ {location.current_round}")
     else:
         print(f"⚠️ Location {location_id} not found while ending round")
 
@@ -431,6 +429,16 @@ def trigger_matchmaking_for_location(location_id):
 
         current_round = location.current_round or 1
         print(f"Starting round {current_round} at location {location_id}")
+        
+                # 🧩 ADD THIS SAFETY CHECK HERE 👇
+        last_match = (
+            Match.query.filter_by(location_id=location_id)
+            .order_by(Match.id.desc())
+            .first()
+        )
+        if last_match and last_match.round_number == location.current_round:
+            print(f"⚠️ Round {location.current_round} already active at location {location_id}. Skipping duplicate trigger.")
+            return None
 
         # 2️⃣ Expire previous active matches
         active_matches = Match.query.filter_by(
@@ -503,9 +511,7 @@ def trigger_matchmaking_for_location(location_id):
             )
             db.session.add(new_match)
 
-        # 9️⃣ Commit and increment round
-        db.session.commit()
-        location.current_round = current_round + 1
+        # 9️⃣ Commit (increment of round happens in end_matchmaking_round)
         db.session.commit()
 
         print(f"✅ Round {current_round} created with {len(selected_pairs)} matches")
@@ -1680,27 +1686,35 @@ def get_user_matches_for_location(user_id, location_id):
             if (user_id, matched_user_id) in preference_pairs:
                 print(f"SKIPPING: Existing preference found")
                 continue
-
-            # Get user image if available
+            
+            
+            # --- Fetch all relevant data for this matched user ---
             user_image = UserImages.query.filter_by(user_auth_id=matched_user_id).first()
-            image_url = None
-            if user_image and user_image.imageString:
-                image_url = f"/uploads/{user_image.imageString}"
-
+            relationship_data = RelationshipData.query.filter_by(user_auth_id=matched_user_id).first()
             other_user_data = UserData.query.filter_by(user_auth_id=matched_user_id).first()
 
+            # If you stored full image URLs (DigitalOcean Spaces), use directly
+            image_url = user_image.imageString if (user_image and user_image.imageString) else None
+                    
+            # --- Assemble the response object ---
             result.append({
                 'user_id': matched_user_id,
-                'email': other_user_data.email,
-                'firstname': other_user_data.firstname,
-                'lastname': other_user_data.lastname,
-                'preferences': other_user_data.preferences,
-                'age': other_user_data.age,
-                'bio': other_user_data.bio,
-                'hobbies': other_user_data.hobbies,
-                'gender': other_user_data.gender,
-                'phone_number': other_user_data.phone_number,
+                'email': other_user_data.email if other_user_data else None,
+                'firstname': other_user_data.firstname if other_user_data else None,
+                'lastname': other_user_data.lastname if other_user_data else None,
+                'preferences': other_user_data.preferences if other_user_data else None,
+                'age': other_user_data.age if other_user_data else None,
+                'bio': other_user_data.bio if other_user_data else None,
+                'hobbies': other_user_data.hobbies if other_user_data else None,
+                'gender': other_user_data.gender if other_user_data else None,
+                'phone_number': other_user_data.phone_number if other_user_data else None,
                 'image_url': image_url,
+                # NEW: Relationship details
+                'relationship_data': {
+                    'lookingfor': relationship_data.lookingfor if relationship_data else None,
+                    'openfor': relationship_data.openfor if relationship_data else None,
+                    'email': relationship_data.email if relationship_data else None
+                },
                 'status': match.status,
                 'location': match.location_id,
                 'current_server_time': get_unix_timestamp(datetime.now(timezone.utc)),
