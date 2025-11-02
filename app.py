@@ -163,7 +163,8 @@ class Match(db.Model):
     user2_id = db.Column(db.Integer, db.ForeignKey('userdetails.id'), nullable=False)
     match_date = db.Column(db.DateTime, default=datetime.now(timezone.utc))
     visible_after = db.Column(db.Integer)
-    status = db.Column(db.String(20), default='pending')  # 'pending', 'active', 'deleted'
+    status = db.Column(db.String(20), default='pending')  # 'active or expired'
+    consent = db.Column(db.String(20), default='pending')  # 'pending', 'synergy', 'deleted'
     location_id = db.Column(db.Integer, db.ForeignKey('locationInfo.id'), nullable=True)
     matched_expired = db.Column(db.Boolean, default=False)  # <-- New boolean column
     round_number = db.Column(db.Integer, default=1)  # 🆕 round-robin tracking
@@ -186,91 +187,6 @@ with app.app_context():
 
 def has_user_checked_in(user_id, location_id):
     return db.session.query(CheckIn).filter_by(user_id=user_id, location_id=location_id).first() is not None
-
-
-def get_previous_pairs(location_id):
-    previous_matches = Match.query.filter(Match.location_id == location_id).all()
-    previous_pairs = set()
-    for m in previous_matches:
-        previous_pairs.add((m.user1_id, m.user2_id))
-        previous_pairs.add((m.user2_id, m.user1_id))
-    return previous_pairs
-
-
-def is_round_complete(location_id):
-    """
-    Returns True if all active matches at a location have preferences from both users.
-    """
-    active_matches = Match.query.filter_by(location_id=location_id, status='active', matched_expired=False).all()
-    if not active_matches:
-        return False
-
-    for match in active_matches:
-        pref1 = UserPreference.query.filter_by(user_id=match.user1_id, preferred_user_id=match.user2_id).first()
-        pref2 = UserPreference.query.filter_by(user_id=match.user2_id, preferred_user_id=match.user1_id).first()
-        if not pref1 or not pref2:
-            return False
-    return True
-
-
-def end_matchmaking_round(location_id):
-    """
-    Mark all active matches for the location as expired, set matched_expired=True,
-    and increment the current_round counter.
-    """
-    active_matches = Match.query.filter_by(
-        location_id=location_id,
-        status='active',
-        matched_expired=False
-    ).all()
-
-    if not active_matches:
-        print(f"No active matches to end for location {location_id}")
-        return
-
-    # 1️⃣ Expire all active matches
-    for match in active_matches:
-        match.status = 'expired'
-        match.matched_expired = True
-
-    # 2️⃣ Increment current round
-    location = LocationInfo.query.get(location_id)
-    if location:
-        prev_round = location.current_round or 0
-        location.current_round = prev_round + 1
-        print(f"🔁 Incremented round for location {location_id} from {prev_round} ➜ {location.current_round}")
-    else:
-        print(f"⚠️ Location {location_id} not found while ending round")
-
-    # 3️⃣ Commit updates
-    db.session.commit()
-    print(f"✅ Ended round at location {location_id}: {len(active_matches)} matches marked expired.")
-
-
-# I changed this, be aware!
-def process_potential_match(user1_id, user2_id):
-    """
-    Update existing match based on user preferences.
-    If either user rejects, mark match as deleted.
-    """
-    pref1 = UserPreference.query.filter_by(user_id=user1_id, preferred_user_id=user2_id).first()
-    pref2 = UserPreference.query.filter_by(user_id=user2_id, preferred_user_id=user1_id).first()
-
-    existing_match = Match.query.filter(
-        or_(
-            and_(Match.user1_id == user1_id, Match.user2_id == user2_id),
-            and_(Match.user1_id == user2_id, Match.user2_id == user1_id)
-        )
-    ).first()
-
-    if not existing_match:
-        return
-
-    # Reject logic
-    if (pref1 and pref1.preference == 'reject') or (pref2 and pref2.preference == 'reject'):
-        existing_match.status = 'deleted'
-        db.session.commit()
-
 
 def hopcroft_karp(males, females, allowed_pairs):
     """
@@ -333,6 +249,10 @@ def set_preference():
     """
     Save user preference and update match status.
     Automatically ends round if all active matches have preferences.
+    Updates match.consent according to user decisions:
+      - Any reject → consent='deleted'
+      - Both like → consent='active'
+      - Any save_later → consent='pending'
     """
     try:
         data = request.get_json()
@@ -369,10 +289,10 @@ def set_preference():
             db.session.add(new_pref)
         db.session.commit()
 
-        # Update match if needed
+        # Update match consent if needed
         process_potential_match(user.id, preferred_user.id)
 
-        # Check if round is complete
+        # Find the current active match
         match = Match.query.filter(
             or_(
                 and_(Match.user1_id == user.id, Match.user2_id == preferred_user.id),
@@ -410,6 +330,97 @@ def set_preference():
         print(f"Error in set_preference: {str(e)}")
         db.session.rollback()
         return jsonify({'error': 'Internal Server Error'}), 500
+    
+
+def get_previous_pairs(location_id):
+    previous_matches = Match.query.filter(Match.location_id == location_id).all()
+    previous_pairs = set()
+    for m in previous_matches:
+        previous_pairs.add((m.user1_id, m.user2_id))
+        previous_pairs.add((m.user2_id, m.user1_id))
+    return previous_pairs
+
+
+def is_round_complete(location_id):
+    """
+    Returns True if all active matches at a location have preferences from both users.
+    """
+    active_matches = Match.query.filter_by(location_id=location_id, status='active', matched_expired=False).all()
+    if not active_matches:
+        return False
+
+    for match in active_matches:
+        pref1 = UserPreference.query.filter_by(user_id=match.user1_id, preferred_user_id=match.user2_id).first()
+        pref2 = UserPreference.query.filter_by(user_id=match.user2_id, preferred_user_id=match.user1_id).first()
+        if not pref1 or not pref2:
+            return False
+    return True
+
+
+def end_matchmaking_round(location_id):
+    """
+    Mark all active matches for the location as expired, set matched_expired=True,
+    and ensure location.current_round = max(match.round_number) + 1
+    """
+    active_matches = Match.query.filter_by(
+        location_id=location_id,
+        status='active',
+        matched_expired=False
+    ).all()
+
+    if not active_matches:
+        print(f"No active matches to end for location {location_id}")
+        return
+
+    # 1️⃣ Expire all active matches
+    for match in active_matches:
+        match.status = 'expired'
+        match.matched_expired = True
+
+    # 2️⃣ Set location.current_round based on latest match
+    location = LocationInfo.query.get(location_id)
+    if location:
+        latest_match = Match.query.filter_by(location_id=location_id).order_by(Match.round_number.desc()).first()
+        max_round = latest_match.round_number if latest_match else 0
+        location.current_round = max_round + 1
+        print(f"🔁 Set round for location {location_id} to {location.current_round} (max match round was {max_round})")
+    else:
+        print(f"⚠️ Location {location_id} not found while ending round")
+
+    # 3️⃣ Commit updates
+    db.session.commit()
+    print(f"✅ Ended round at location {location_id}: {len(active_matches)} matches marked expired")
+
+
+
+# I changed this, be aware!
+def process_potential_match(user1_id, user2_id):
+    """
+    Update existing match based on user preferences.
+    Updates consent: 'deleted', 'active', or 'pending'.
+    """
+    pref1 = UserPreference.query.filter_by(user_id=user1_id, preferred_user_id=user2_id).first()
+    pref2 = UserPreference.query.filter_by(user_id=user2_id, preferred_user_id=user1_id).first()
+
+    existing_match = Match.query.filter(
+        or_(
+            and_(Match.user1_id == user1_id, Match.user2_id == user2_id),
+            and_(Match.user1_id == user2_id, Match.user2_id == user1_id)
+        )
+    ).first()
+
+    if not existing_match:
+        return
+
+    # Determine consent
+    if (pref1 and pref1.preference == 'reject') or (pref2 and pref2.preference == 'reject'):
+        existing_match.consent = 'deleted'
+    elif (pref1 and pref1.preference == 'like') and (pref2 and pref2.preference == 'like'):
+        existing_match.consent = 'active'
+    else:
+        existing_match.consent = 'pending'
+
+    db.session.commit()
 
 
 def trigger_matchmaking_for_location(location_id):
@@ -427,10 +438,14 @@ def trigger_matchmaking_for_location(location_id):
             print(f"⚠️ Location {location_id} not found")
             return None
 
-        current_round = location.current_round or 1
+        # Ensure current_round = max(match.round_number) + 1
+        latest_match = Match.query.filter_by(location_id=location_id).order_by(Match.round_number.desc()).first()
+        current_round = (latest_match.round_number if latest_match else 0) + 1
         print(f"Starting round {current_round} at location {location_id}")
+        location.current_round = current_round
+        db.session.commit()
         
-                # 🧩 ADD THIS SAFETY CHECK HERE 👇
+        # 🧩 ADD THIS SAFETY CHECK HERE 👇
         last_match = (
             Match.query.filter_by(location_id=location_id)
             .order_by(Match.id.desc())
