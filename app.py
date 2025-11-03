@@ -14,7 +14,7 @@ from collections import deque
 
 app = Flask(__name__)
 app.config[
-    'SQLALCHEMY_DATABASE_URI'] = "postgresql://wings501_render_example_user:f73FWQLaq7ww2lp4ObbGmfC4falxKKUZ@dpg-d43o73euk2gs739atirg-a.frankfurt-postgres.render.com/wings501_render_example"
+    'SQLALCHEMY_DATABASE_URI'] = ""
 socketio = SocketIO(app)
 db = SQLAlchemy(app)
 
@@ -108,8 +108,7 @@ class LocationInfo(db.Model):
     checkin_closed = db.Column(db.Boolean, default=False)
     event_type = db.Column(db.String(100))  # e.g. "Music", "DJ Night", "Live Band"   
     current_round = db.Column(db.Integer, default=1)  # Track round number
-    round_in_progress = db.Column(db.Boolean, default=False)  # 🆕
-    last_round_ended_at = db.Column(db.DateTime, nullable=True)  # 🆕
+
 
 class CheckIn(db.Model):
     __tablename__ = 'checkins'
@@ -165,7 +164,7 @@ class Match(db.Model):
     match_date = db.Column(db.DateTime, default=datetime.now(timezone.utc))
     visible_after = db.Column(db.Integer)
     status = db.Column(db.String(20), default='pending')  # 'active or expired'
-    consent = db.Column(db.String(20), default='pending')  # 'pending', 'synergy', 'deleted'
+    consent = db.Column(db.String(20), default='pending')  # 'pending', 'active', 'deleted'
     location_id = db.Column(db.Integer, db.ForeignKey('locationInfo.id'), nullable=True)
     matched_expired = db.Column(db.Boolean, default=False)  # <-- New boolean column
     round_number = db.Column(db.Integer, default=1)  # 🆕 round-robin tracking
@@ -307,8 +306,13 @@ def set_preference():
             location_id = match.location_id
             if is_round_complete(location_id):
                 print(f"✅ Round complete for location {location_id}. Ending and starting next round...")
+                
                 end_matchmaking_round(location_id)
+                db.session.commit()  # <-- 🔥 ensure state is flushed and persisted
+
                 trigger_matchmaking_for_location(location_id)
+                db.session.commit()  # <-- commit new matches as well
+
                 return jsonify({
                     'message': f'Preference set to {preference}',
                     'round_status': 'complete',
@@ -343,90 +347,54 @@ def get_previous_pairs(location_id):
 
 
 def is_round_complete(location_id):
-    location = LocationInfo.query.get(location_id)
-    if not location:
-        return False
-
-    current_round = location.current_round
-    active_matches = Match.query.filter_by(
-        location_id=location_id,
-        round_number=current_round,
-        status='active',
-        matched_expired=False
-    ).all()
-
+    """
+    Returns True if all active matches at a location have preferences from both users.
+    """
+    active_matches = Match.query.filter_by(location_id=location_id, status='active', matched_expired=False).all()
     if not active_matches:
         return False
 
     for match in active_matches:
-        pref1 = UserPreference.query.filter_by(
-            user_id=match.user1_id,
-            preferred_user_id=match.user2_id
-        ).first()
-        pref2 = UserPreference.query.filter_by(
-            user_id=match.user2_id,
-            preferred_user_id=match.user1_id
-        ).first()
-
+        pref1 = UserPreference.query.filter_by(user_id=match.user1_id, preferred_user_id=match.user2_id).first()
+        pref2 = UserPreference.query.filter_by(user_id=match.user2_id, preferred_user_id=match.user1_id).first()
         if not pref1 or not pref2:
             return False
-
     return True
-
-
 
 
 def end_matchmaking_round(location_id):
     """
-    Ends the current matchmaking round for a given location.
-    - Expires only matches in the current round
-    - Prevents duplicate triggering
-    - Increments the round counter safely
+    Mark all active matches for the location as expired, set matched_expired=True,
+    and ensure location.current_round = max(match.round_number) + 1
     """
-    location = LocationInfo.query.get(location_id)
-    if not location:
-        print(f"⚠️ Location {location_id} not found while ending round")
-        return
-
-    current_round = location.current_round
-
-    # 🧩 Find all active matches in *this* round only
     active_matches = Match.query.filter_by(
         location_id=location_id,
-        round_number=current_round,
         status='active',
         matched_expired=False
     ).all()
 
     if not active_matches:
-        print(f"No active matches to end for location {location_id}, round {current_round}")
+        print(f"No active matches to end for location {location_id}")
         return
 
-    # 🧱 Optional: Lock mechanism to prevent double increments
-    if getattr(location, "round_in_progress", False):
-        print(f"⚠️ Round already in progress at location {location_id}, skipping duplicate end.")
-        return
-    location.round_in_progress = True  # temporary flag
-
-    # 1️⃣ Expire all active matches for this round
+    # 1️⃣ Expire all active matches
     for match in active_matches:
         match.status = 'expired'
         match.matched_expired = True
 
-    # 2️⃣ Increment the round safely
-    next_round = current_round + 1
-    location.current_round = next_round
-    location.last_round_ended_at = datetime.now(timezone.utc)
+    # 2️⃣ Set location.current_round based on latest match
+    location = LocationInfo.query.get(location_id)
+    if location:
+        latest_match = Match.query.filter_by(location_id=location_id).order_by(Match.round_number.desc()).first()
+        max_round = latest_match.round_number if latest_match else 0
+        location.current_round = max_round + 1
+        print(f"🔁 Set round for location {location_id} to {location.current_round} (max match round was {max_round})")
+    else:
+        print(f"⚠️ Location {location_id} not found while ending round")
 
     # 3️⃣ Commit updates
     db.session.commit()
-
-    # 4️⃣ Clear the lock
-    location.round_in_progress = False
-    db.session.commit()
-
-    print(f"✅ Ended round {current_round} at location {location_id} → next round = {next_round}")
-
+    print(f"✅ Ended round at location {location_id}: {len(active_matches)} matches marked expired")
 
 
 
@@ -481,6 +449,11 @@ def trigger_matchmaking_for_location(location_id):
         print(f"Starting round {current_round} at location {location_id}")
         location.current_round = current_round
         db.session.commit()
+        
+        # ⚠️ Add the safety check here BEFORE creating new matches
+        if Match.query.filter_by(location_id=location_id, round_number=location.current_round, status='active').first():
+            print("Skipping: round already active")
+            return None
         
         # 🧩 ADD THIS SAFETY CHECK HERE 👇
         last_match = (
@@ -816,91 +789,6 @@ def get_match_status(user_id, other_user_id):
     except Exception as e:
         print(f"Error in get_status: {str(e)}")
         return ""
-
-
-def get_user_matches(user_id, limit=5):
-    """Get top matches for a user"""
-    try:
-        # First get the user's gender
-        user = UserData.query.filter_by(user_auth_id=user_id).first()
-        if not user:
-            print(f"No user found for ID: {user_id}")
-            return []
-
-        # Normalize gender values for consistent comparison
-        user_gender = user.gender.lower() if user.gender else None
-
-        # Get users of opposite gender, handling different gender formats
-        if user_gender == 'men' or user_gender == 'man':
-            target_gender = ['Woman', 'woman', 'Women', 'women', 'Female', 'female']
-        elif user_gender == 'woman' or user_gender == 'women':
-            target_gender = ['Men', 'men', 'Man', 'man', 'Male', 'male']
-        else:
-            # If gender is something else or not specified, get any user
-            target_gender = ['Men', 'men', 'Man', 'man', 'Male', 'male', 'Woman', 'woman', 'Women', 'women', 'Female',
-                             'female']
-
-        # Get existing matches and preferences to avoid duplicates
-        existing_matches = Match.query.filter(
-            or_(Match.user1_id == user_id, Match.user2_id == user_id),
-            # and_(Match.status != 'deleted', Match.status != 'active')
-            Match.status != 'deleted'
-        ).all()
-
-        existing_preferences = UserPreference.query.filter_by(user_id=user_id).all()
-
-        # Create sets of already matched/preferred user IDs
-        matched_users = set()
-        for match in existing_matches:
-            if match.user1_id == user_id:
-                matched_users.add(match.user2_id)
-            else:
-                matched_users.add(match.user1_id)
-
-        preferred_users = set([pref.preferred_user_id for pref in existing_preferences])
-
-        # Find potential matches (users of opposite gender not already matched/preferred)
-        potential_matches = UserData.query.filter(
-            UserData.gender.in_(target_gender),
-            UserData.user_auth_id != user_id,
-            ~UserData.user_auth_id.in_(matched_users.union(preferred_users))
-        ).all()
-
-        # Calculate match scores and sort
-        scored_matches = []
-        for potential_match in potential_matches:
-            score = get_match_score(user, potential_match)
-            scored_matches.append((potential_match, score))
-
-        # Sort by score (highest first)
-        scored_matches.sort(key=lambda x: x[1], reverse=True)
-
-        # Format results with top matches
-        result = []
-        for match, score in scored_matches[:limit]:
-            # Get user image if available
-            user_image = UserImages.query.filter_by(user_auth_id=match.user_auth_id).first()
-            image_url = None
-            if user_image and user_image.imageString:
-                image_url = f"/uploads/{user_image.imageString}"
-
-            result.append({
-                'user_id': match.user_auth_id,
-                'email': match.email,
-                'firstname': match.firstname,
-                'lastname': match.lastname,
-                'preferences': match.preferences,
-                'age': match.age,
-                'bio': match.bio,
-                'hobbies': match.hobbies,
-                'match_score': score,
-                'image_url': image_url
-            })
-
-        return result
-    except Exception as e:
-        print(f"Error in get_user_matches: {str(e)}")
-        return []
 
 
 def match_all_users():
@@ -1695,68 +1583,81 @@ def get_user_matches_for_location(user_id, location_id):
     try:
         create_new_matches = request.args.get('create_new_matches')
 
-        # Fetch location
-        location = LocationInfo.query.get(location_id)
+        # ✅ Fetch the location so we can access current_round
+        location = LocationInfo.query.filter_by(id=location_id).first()
         if not location:
-            return jsonify({'error': 'Location not found'}), 404
+            return jsonify({'error': f'Location {location_id} not found'}), 404
 
-        current_round = location.current_round
+        if create_new_matches and create_new_matches == 'true':
+            match_making_result = trigger_matchmaking_for_location(location_id)
+            print(f"Match making at location result: {match_making_result}")
 
-        # Optionally trigger new matches (if requested)
-        if create_new_matches == 'true' and not location.round_in_progress:
-            trigger_matchmaking_for_location(location_id)
+        # Query to get all existing active matches for a given user at a specific location
+        existing_matches = (
+            db.session.query(Match)
+            .join(CheckIn, or_(
+                CheckIn.user_id == Match.user1_id,
+                CheckIn.user_id == Match.user2_id
+            ))
+            .filter(
+                or_(Match.user1_id == user_id, Match.user2_id == user_id),
+                Match.status == 'active',
+                Match.matched_expired == False,  # ✅ ADD THIS LINE        
+                Match.location_id == location_id,
+                Match.round_number == location.current_round   # ✅ prevents duplicate old rounds    
+            )
+            .order_by(desc(Match.visible_after))
+            .all()
+        )
 
-        # 1️⃣ Get all active matches for the current round
-        active_matches = Match.query.filter_by(
-            location_id=location_id,
-            status='active',
-            matched_expired=False,
-            round_number=current_round
-        ).all()
+        if len(existing_matches) == 0:
+            return jsonify({'message': 'No matches left for this event'}), 400
 
-        if not active_matches:
-            return jsonify({
-                'matches': [],
-                'round_status': 'waiting',  # No matches yet, waiting for round
-                'current_round': current_round,
-                'next_round_matches_available': False
-            })
+        preferences = (UserPreference.query
+                       .filter(
+                            or_(UserPreference.user_id == user_id, UserPreference.preferred_user_id == user_id)
+                       ).all())
 
-        # 2️⃣ Check if round is complete (all preferences submitted)
-        round_complete = is_round_complete(location_id)
-        round_status = "ready" if round_complete else "waiting"
+        preference_pairs = set()
+        for pref in preferences:
+            preference_pairs.add((pref.user_id, pref.preferred_user_id))
+            preference_pairs.add((pref.preferred_user_id, pref.user_id)) # Add reverse pair also
 
-        # 3️⃣ Filter matches for the current user only
-        user_preferences = UserPreference.query.filter(
-            or_(UserPreference.user_id == user_id, UserPreference.preferred_user_id == user_id)
-        ).all()
+        # Format results with matches
+        result = []
+        for match in existing_matches:
 
-        acted_pairs = set()
-        for pref in user_preferences:
-            acted_pairs.add((pref.user_id, pref.preferred_user_id))
-            acted_pairs.add((pref.preferred_user_id, pref.user_id))
+            matched_user_id = int(
+                match.user2_id if match.user1_id == user_id else match.user1_id)  # get opposite match id
 
-        user_matches = []
-        for match in active_matches:
-            matched_user_id = match.user2_id if match.user1_id == user_id else match.user1_id
-            if (user_id, matched_user_id) in acted_pairs:
+            # Checking if this match already has a preference available
+            if (user_id, matched_user_id) in preference_pairs:
+                print(f"SKIPPING: Existing preference found")
                 continue
-
-            other_user_data = UserData.query.filter_by(user_auth_id=matched_user_id).first()
+            
+            
+            # --- Fetch all relevant data for this matched user ---
             user_image = UserImages.query.filter_by(user_auth_id=matched_user_id).first()
             relationship_data = RelationshipData.query.filter_by(user_auth_id=matched_user_id).first()
+            other_user_data = UserData.query.filter_by(user_auth_id=matched_user_id).first()
 
-            user_matches.append({
+            # If you stored full image URLs (DigitalOcean Spaces), use directly
+            image_url = user_image.imageString if (user_image and user_image.imageString) else None
+                    
+            # --- Assemble the response object ---
+            result.append({
                 'user_id': matched_user_id,
                 'email': other_user_data.email if other_user_data else None,
                 'firstname': other_user_data.firstname if other_user_data else None,
                 'lastname': other_user_data.lastname if other_user_data else None,
+                'preferences': other_user_data.preferences if other_user_data else None,
                 'age': other_user_data.age if other_user_data else None,
                 'bio': other_user_data.bio if other_user_data else None,
                 'hobbies': other_user_data.hobbies if other_user_data else None,
                 'gender': other_user_data.gender if other_user_data else None,
                 'phone_number': other_user_data.phone_number if other_user_data else None,
-                'image_url': user_image.imageString if user_image else None,
+                'image_url': image_url,
+                # NEW: Relationship details
                 'relationship_data': {
                     'lookingfor': relationship_data.lookingfor if relationship_data else None,
                     'openfor': relationship_data.openfor if relationship_data else None,
@@ -1764,27 +1665,19 @@ def get_user_matches_for_location(user_id, location_id):
                 },
                 'status': match.status,
                 'location': match.location_id,
+                'current_server_time': get_unix_timestamp(datetime.now(timezone.utc)),
                 'visible_after': match.visible_after,
-                'round_number': match.round_number,
-                'current_server_time': get_unix_timestamp(datetime.now(timezone.utc))
+                'round_number': match.round_number
             })
 
-        # 4️⃣ Tell frontend if next round is already available
-        next_round_available = False
-        if round_complete:
-            next_round_available = True
+        if len(result) == 0:
+            return jsonify({'message': 'No matches left for this event'}), 400
 
-        return jsonify({
-            'matches': user_matches,
-            'round_status': round_status,
-            'current_round': current_round,
-            'next_round_matches_available': next_round_available
-        })
+        return jsonify({'matches': result})
 
     except Exception as e:
-        print(f"Error in get_user_matches_for_location: {str(e)}")
-        return jsonify({'matches': [], 'round_status': 'unknown', 'current_round': None, 'next_round_matches_available': False})
-
+        print(f"Error in get_user_matches: {str(e)}")
+        return jsonify({'matches': []})
 
 
 @app.route('/attend', methods=['POST'])
