@@ -373,40 +373,32 @@ def is_round_complete(location_id):
 
     return True
 
-
+    
 def end_matchmaking_round(location_id):
-    """
-    Mark all active matches for the location as expired, set matched_expired=True,
-    and ensure location.current_round = max(match.round_number) + 1
-    """
+        
     active_matches = Match.query.filter_by(
         location_id=location_id,
         status='active',
         matched_expired=False
     ).all()
-
+    
     if not active_matches:
         print(f"No active matches to end for location {location_id}")
         return
 
-    # 1️⃣ Expire all active matches
     for match in active_matches:
         match.status = 'expired'
         match.matched_expired = True
 
-    # 2️⃣ Set location.current_round based on latest match
     location = LocationInfo.query.get(location_id)
     if location:
-        latest_match = Match.query.filter_by(location_id=location_id).order_by(Match.round_number.desc()).first()
+        latest_match = Match.query.filter_by(location_id=location_id)\
+                                  .order_by(Match.round_number.desc())\
+                                  .first()
         max_round = latest_match.round_number if latest_match else 0
-        location.current_round = max_round + 1
-        print(f"🔁 Set round for location {location_id} to {location.current_round} (max match round was {max_round})")
-    else:
-        print(f"⚠️ Location {location_id} not found while ending round")
-
-    # 3️⃣ Commit updates
+        location.current_round = max_round + 1  # ✅ increment here
     db.session.commit()
-    print(f"✅ Ended round at location {location_id}: {len(active_matches)} matches marked expired")
+
 
 
 # I changed this, be aware!
@@ -469,12 +461,9 @@ def trigger_matchmaking_for_location(location_id):
             print(f"⚠️ Location {location_id} not found")
             return None
 
-        # Ensure current_round = max(match.round_number) + 1
-        latest_match = Match.query.filter_by(location_id=location_id).order_by(Match.round_number.desc()).first()
-        current_round = (latest_match.round_number if latest_match else 0) + 1
-        print(f"Starting round {current_round} at location {location_id}")
-        location.current_round = current_round
-        db.session.commit()
+        # ✅ Use the current round directly, do not recalculate or increment
+        current_round = location.current_round
+        print(f"Starting matchmaking for round {current_round} at location {location_id}")
         
         # ⚠️ Add the safety check here BEFORE creating new matches
         if Match.query.filter_by(location_id=location_id, round_number=location.current_round, status='active').first():
