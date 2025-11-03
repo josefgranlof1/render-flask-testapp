@@ -348,20 +348,9 @@ def get_previous_pairs(location_id):
 
 def is_round_complete(location_id):
     """
-    Returns True if all active matches at a location have preferences from both users
-    for the current round.
+    Returns True if all active matches at a location have preferences from both users.
     """
-    location = LocationInfo.query.get(location_id)  # ✅ fetch the location
-    if not location:
-        return False  # location not found, consider round incomplete
-
-    active_matches = Match.query.filter_by(
-        location_id=location_id,
-        status='active',
-        matched_expired=False,
-        round_number=location.current_round  # ✅ now valid
-    ).all()
-
+    active_matches = Match.query.filter_by(location_id=location_id, status='active', matched_expired=False).all()
     if not active_matches:
         return False
 
@@ -370,7 +359,6 @@ def is_round_complete(location_id):
         pref2 = UserPreference.query.filter_by(user_id=match.user2_id, preferred_user_id=match.user1_id).first()
         if not pref1 or not pref2:
             return False
-
     return True
 
 
@@ -409,41 +397,27 @@ def end_matchmaking_round(location_id):
     print(f"✅ Ended round at location {location_id}: {len(active_matches)} matches marked expired")
 
 
+
 # I changed this, be aware!
-def process_potential_match(user1_id, user2_id, location_id=None):
+def process_potential_match(user1_id, user2_id):
     """
     Update existing match based on user preferences.
     Updates consent: 'deleted', 'active', or 'pending'.
-    Only affects the active match for the current round.
-    
-    If location_id is provided, it ensures only the current round at that location is considered.
     """
-    # Fetch user preferences
     pref1 = UserPreference.query.filter_by(user_id=user1_id, preferred_user_id=user2_id).first()
     pref2 = UserPreference.query.filter_by(user_id=user2_id, preferred_user_id=user1_id).first()
 
-    # Build base query for the match
-    match_query = Match.query.filter(
+    existing_match = Match.query.filter(
         or_(
             and_(Match.user1_id == user1_id, Match.user2_id == user2_id),
             and_(Match.user1_id == user2_id, Match.user2_id == user1_id)
-        ),
-        Match.status == 'active',
-        Match.matched_expired == False
-    )
-
-    # If location_id provided, filter by current round
-    if location_id:
-        location = LocationInfo.query.get(location_id)
-        if location:
-            match_query = match_query.filter(Match.round_number == location.current_round)
-
-    existing_match = match_query.first()
+        )
+    ).first()
 
     if not existing_match:
-        return  # No active match to update
+        return
 
-    # Determine consent based on preferences
+    # Determine consent
     if (pref1 and pref1.preference == 'reject') or (pref2 and pref2.preference == 'reject'):
         existing_match.consent = 'deleted'
     elif (pref1 and pref1.preference == 'like') and (pref2 and pref2.preference == 'like'):
