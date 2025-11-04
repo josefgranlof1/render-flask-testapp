@@ -440,9 +440,14 @@ def process_potential_match(user1_id, user2_id, location_id=None):
     if pref1.preference == 'like' and pref2.preference == 'like':
         if existing_match:
             # Update match status
-            existing_match.status = 'active'
             existing_match.consent = 'active'   # <-- Add this line
-            existing_match.visible_after = get_unix_timestamp(datetime.now(timezone.utc) + timedelta(minutes=20))
+            
+             # Only reactivate if not expired
+            if existing_match.status != 'expired':
+                existing_match.status = 'active'
+                existing_match.visible_after = get_unix_timestamp(
+                    datetime.now(timezone.utc) + timedelta(minutes=20)
+                )
         else:
             # Create new match with 20 minute delay
             new_match = Match(
@@ -457,22 +462,28 @@ def process_potential_match(user1_id, user2_id, location_id=None):
     elif pref1.preference == 'reject' or pref2.preference == 'reject':
         if existing_match:
             # Mark match as deleted
-            existing_match.status = 'deleted'
             existing_match.consent = 'deleted'  # <-- Add this line
+            
+            # Only set status deleted if match isn't expired
+            if existing_match.status != 'expired':
+                existing_match.status = 'deleted'
+                
     # Case III & IV: Save for later scenarios
     elif pref1.preference == 'save_later' or pref2.preference == 'save_later':
         # Only proceed if neither preference is 'reject'
         if pref1.preference != 'reject' and pref2.preference != 'reject':
-            if not existing_match:
-                # Create pending match
-                new_match = Match(
-                    user1_id=user1_id,
-                    user2_id=user2_id,
-                    status='pending',
-                    consent='pending',
-                    visible_after=get_unix_timestamp(datetime.now(timezone.utc))  # Visible immediately, but pending
-                )
-                db.session.add(new_match)
+             if existing_match:
+                existing_match.consent = 'pending'
+        else:
+            # Create pending match
+            new_match = Match(
+                user1_id=user1_id,
+                user2_id=user2_id,
+                status='pending',
+                consent='pending',
+                visible_after=get_unix_timestamp(datetime.now(timezone.utc))  # Visible immediately
+            )
+            db.session.add(new_match)
 
 
 def trigger_matchmaking_for_location(location_id):
