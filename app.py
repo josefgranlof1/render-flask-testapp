@@ -400,16 +400,14 @@ def end_matchmaking_round(location_id):
     db.session.commit()
 
 
-
-# I changed this, be aware!
 def process_potential_match(user1_id, user2_id, location_id=None):
     """
     Update existing match based on user preferences.
     Updates consent: 'deleted', 'active', or 'pending'.
     Only affects the active match for the current round.
-    
-    If location_id is provided, it ensures only the current round at that location is considered.
+    Status is NEVER changed here.
     """
+
     # Fetch user preferences
     pref1 = UserPreference.query.filter_by(user_id=user1_id, preferred_user_id=user2_id).first()
     pref2 = UserPreference.query.filter_by(user_id=user2_id, preferred_user_id=user1_id).first()
@@ -431,19 +429,32 @@ def process_potential_match(user1_id, user2_id, location_id=None):
             match_query = match_query.filter(Match.round_number == location.current_round)
 
     existing_match = match_query.first()
-
     if not existing_match:
         return  # No active match to update
 
-    # Determine consent based on preferences
+    # Determine consent logic
+    # ❌ Any reject → deleted
     if (pref1 and pref1.preference == 'reject') or (pref2 and pref2.preference == 'reject'):
         existing_match.consent = 'deleted'
+
+    # ❤️ Both like → active
     elif (pref1 and pref1.preference == 'like') and (pref2 and pref2.preference == 'like'):
         existing_match.consent = 'active'
+
+    # 💾 One save_later + one like → pending
+    elif (
+        (pref1 and pref1.preference == 'save_later' and pref2 and pref2.preference == 'like') or
+        (pref2 and pref2.preference == 'save_later' and pref1 and pref1.preference == 'like')
+    ):
+        existing_match.consent = 'pending'
+
+    # ⏳ Otherwise (both save_later, or one missing) → pending
     else:
         existing_match.consent = 'pending'
 
+    # 🚫 Never touch status
     db.session.commit()
+
 
 
 def trigger_matchmaking_for_location(location_id):
