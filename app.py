@@ -291,6 +291,9 @@ def set_preference():
 
         # Update match consent if needed
         process_potential_match(user.id, preferred_user.id)
+        
+        # Updates the preferences for users post-match for matchesandmessages screen with accept or reject
+        update_expired_match_consent(user.id, preferred_user.id, preference)  # for expired matches
 
         if preference == 'reject':
             user1_id = user.id
@@ -776,6 +779,38 @@ def update_match_status():
     except Exception as e:
         print(f"Error in update_match_status: {str(e)}")
         return jsonify({'error': 'Internal Server Error'}), 500
+
+
+def update_expired_match_consent(user1_id, user2_id, preference=None):
+    """
+    Updates consent for a match even if it is expired.
+    Useful for recording post-round user decisions.
+    
+    - preference: 'like', 'reject', 'save_later'
+    """
+    match = Match.query.filter(
+        or_(
+            and_(Match.user1_id == user1_id, Match.user2_id == user2_id),
+            and_(Match.user1_id == user2_id, Match.user2_id == user1_id)
+        )
+    ).order_by(Match.match_date.desc()).first()  # get the most recent match
+
+    if not match:
+        return
+
+    # Determine consent based on preference
+    if preference == 'reject':
+        match.consent = 'deleted'
+    elif preference == 'like':
+        # Only mark active if both like each other
+        pref1 = UserPreference.query.filter_by(user_id=user1_id, preferred_user_id=user2_id).first()
+        pref2 = UserPreference.query.filter_by(user_id=user2_id, preferred_user_id=user1_id).first()
+        if pref1 and pref2 and pref1.preference == 'like' and pref2.preference == 'like':
+            match.consent = 'active'
+    elif preference == 'save_later':
+        match.consent = 'pending'
+
+    db.session.commit()
 
 
 def get_match_score(user1_data, user2_data):
