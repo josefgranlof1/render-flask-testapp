@@ -436,14 +436,39 @@ def process_potential_match(user1_id, user2_id, location_id=None):
         return  # No active match to update
 
     # Determine consent based on preferences
-    if (pref1 and pref1.preference == 'reject') or (pref2 and pref2.preference == 'reject'):
-        existing_match.consent = 'deleted'
-    elif (pref1 and pref1.preference == 'like') and (pref2 and pref2.preference == 'like'):
-        existing_match.consent = 'active'
-    else:
-        existing_match.consent = 'pending'
-
-    db.session.commit()
+    # Case I: Both users like each other
+    if pref1.preference == 'like' and pref2.preference == 'like':
+        if existing_match:
+            # Update match status
+            existing_match.status = 'active'
+            existing_match.visible_after = get_unix_timestamp(datetime.now(timezone.utc) + timedelta(minutes=20))
+        else:
+            # Create new match with 20 minute delay
+            new_match = Match(
+                user1_id=user1_id,
+                user2_id=user2_id,
+                visible_after=get_unix_timestamp(datetime.now(timezone.utc) + timedelta(minutes=20)),
+                status='active'
+            )
+            db.session.add(new_match)
+    # Case II: One or both users rejected
+    elif pref1.preference == 'reject' or pref2.preference == 'reject':
+        if existing_match:
+            # Mark match as deleted
+            existing_match.status = 'deleted'
+    # Case III & IV: Save for later scenarios
+    elif pref1.preference == 'save_later' or pref2.preference == 'save_later':
+        # Only proceed if neither preference is 'reject'
+        if pref1.preference != 'reject' and pref2.preference != 'reject':
+            if not existing_match:
+                # Create pending match
+                new_match = Match(
+                    user1_id=user1_id,
+                    user2_id=user2_id,
+                    status='pending',
+                    visible_after=get_unix_timestamp(datetime.now(timezone.utc))  # Visible immediately, but pending
+                )
+                db.session.add(new_match)
 
 
 def trigger_matchmaking_for_location(location_id):
@@ -1928,6 +1953,234 @@ def get_chats():
 
     return jsonify(chat_history)
 
+
+# code removed from flask_official_wingit_backend
+
+# Code changed
+# def trigger_matchmaking_for_location(location_id):
+#     """
+#     Trigger automatic matchmaking for all checked-in users at a specific location.
+#     This is called when all slots are filled or check-in period ends.
+#     """
+#     try:
+        
+#         # Step 0: Expire completed matches first
+#         expire_completed_matches(location_id)
+
+#         # --- Step 1: Determine current round number ---
+#         last_match = (
+#             Match.query.filter_by(location_id=location_id)
+#             .order_by(Match.round_number.desc())
+#             .first()
+#         )
+        
+#         current_round = last_match.round_number + 1 if last_match else 1
+#         print(f"🔁 Starting matchmaking ROUND {current_round} for location {location_id}")
+        
+#         # Get all users who checked in to this location
+#         checkins = CheckIn.query.filter_by(location_id=location_id).all()
+#         checked_in_user_ids = [checkin.user_id for checkin in checkins]
+
+#         print(f"Triggered matchmaking for location {location_id}")
+
+#         if len(checked_in_user_ids) < 2:
+#             print(f"Not enough users checked in for matchmaking at location {location_id}")
+#             return None
+        
+#         # Get location details for matchmaking
+#         location = LocationInfo.query.get(location_id)
+#         if not location:
+#             print(f"Location {location_id} not found")
+#             return None
+
+#         # Get the actual checked-in users
+#         checked_in_users = []
+#         for user_id in checked_in_user_ids:
+#             user = Task.query.get(user_id)
+#             if user:
+#                 checked_in_users.append(user)
+
+#         if len(checked_in_users) < 2:
+#             print(f"Not enough valid users for matchmaking at location {location_id}")
+#             return None
+
+#         # Query to get all existing active matches at this location for all the checked in users
+#         # --- Step 3: Filter out users already in active matches this round ---
+#         active_match_users = set(
+#             sum(
+#                 db.session.query(Match.user1_id, Match.user2_id)
+#                 .filter(
+#                     Match.status == 'active',
+#                     Match.location_id == location_id,
+#                     Match.round_number == current_round
+#                 )
+#                 .all(),
+#                 ()
+#             )
+#         )
+        
+#         available_user_ids = [u for u in checked_in_user_ids if u not in active_match_users]
+
+#         if len(available_user_ids) < 2:
+#             print(f"⚠️ All users already have active matches this round at location {location_id}")
+#             return None
+        
+#         # --- Step 4: Get user objects ---
+#         checked_in_users = [Task.query.get(uid) for uid in available_user_ids if Task.query.get(uid)]
+    
+
+#         # Separate users by gender for proper matching
+#         male_users = []
+#         female_users = []
+
+#         # --- Step 5: Separate users by gender ---
+#         male_users, female_users = [], []
+#         for user in checked_in_users:
+#             user_data = UserData.query.filter_by(user_auth_id=user.id).first()
+#             if user_data and user_data.gender:
+#                 gender = user_data.gender.lower()
+#                 if gender in ['man', 'men', 'male']:
+#                     male_users.append(user)
+#                 elif gender in ['woman', 'women', 'female']:
+#                     female_users.append(user)
+
+#         print(f"📊 Users available - Male: {len(male_users)}, Female: {len(female_users)}")
+
+#         # Create ALL possible matches between opposite genders
+#         matches_created = 0
+#         users_left_out = []
+
+#         # Handle odd numbers with fair rotation
+#         if len(male_users) != len(female_users):
+#             # Determine which gender has more users
+#             if len(male_users) > len(female_users):
+#                 excess_users = male_users
+#                 base_users = female_users
+#                 excess_gender = "male"
+#             else:
+#                 excess_users = female_users
+#                 base_users = male_users
+#                 excess_gender = "female"
+
+#             # Get the last matchmaking session to determine who was left out
+#             last_matchmaking = Match.query.order_by(Match.match_date.desc()).first()
+
+#             # Implement fair rotation
+#             if last_matchmaking:
+#                 # Check who was left out in the last session
+#                 last_match_date = last_matchmaking.match_date
+#                 recent_matches = Match.query.filter(
+#                     Match.match_date >= last_match_date - timedelta(hours=1)
+#                 ).all()
+
+#                 # Get users who were matched recently
+#                 recently_matched = set()
+#                 for match in recent_matches:
+#                     recently_matched.add(match.user1_id)
+#                     recently_matched.add(match.user2_id)
+
+#                 # Find users who were NOT matched recently (potential candidates to leave out)
+#                 unmatched_candidates = [user for user in excess_users if user.id not in recently_matched]
+
+#                 if unmatched_candidates:
+#                     # Leave out a different user this time
+#                     user_to_leave_out = random.choice(unmatched_candidates)
+#                     excess_users.remove(user_to_leave_out)
+#                     users_left_out.append(user_to_leave_out)
+#                     print(
+#                         f"Fair rotation: Leaving out {excess_gender} user {user_to_leave_out.id} ({user_to_leave_out.email}) this time")
+#                 else:
+#                     # If no recent matches, just leave out a random user
+#                     user_to_leave_out = random.choice(excess_users)
+#                     excess_users.remove(user_to_leave_out)
+#                     users_left_out.append(user_to_leave_out)
+#                     print(
+#                         f"Random rotation: Leaving out {excess_gender} user {user_to_leave_out.id} ({user_to_leave_out.email})")
+#             else:
+#                 # First time matchmaking, leave out a random user
+#                 user_to_leave_out = random.choice(excess_users)
+#                 excess_users.remove(user_to_leave_out)
+#                 users_left_out.append(user_to_leave_out)
+#                 print(
+#                     f"First time: Leaving out {excess_gender} user {user_to_leave_out.id} ({user_to_leave_out.email})")
+
+#             # Now we have equal numbers - use the updated lists
+#             if excess_gender == "male":
+#                 male_users = excess_users
+#                 female_users = base_users
+#             else:
+#                 male_users = base_users
+#                 female_users = excess_users
+
+#         # Shuffle both lists to ensure random matching
+#         random.shuffle(male_users)
+#         random.shuffle(female_users)
+
+#         # Create matches one-to-one
+#         for i in range(min(len(male_users), len(female_users))):
+#             male_user = male_users[i]
+#             female_user = female_users[i]
+
+#             # CRITICAL FIX: Prevent self-matching
+#             if male_user.id == female_user.id:
+#                 print(f"SKIPPING: Self-match detected for user {male_user.id}")
+#                 continue
+            
+#             # Skip if a completed match already exists
+#             if has_prior_completed_match(male_user.id, female_user.id):
+#                 print(f"SKIPPING: Completed match already exists for ({male_user.id}, {female_user.id})")
+#                 continue
+
+#             # Get user preferences
+#             user_pref = UserPreference.query.filter_by(
+#                 user_id=male_user.id, preferred_user_id=female_user.id
+#             ).first()
+
+#             other_pref = UserPreference.query.filter_by(
+#                 user_id=female_user.id, preferred_user_id=male_user.id
+#             ).first()
+
+#             if user_pref and user_pref.preference == 'reject':
+#                 print(f"SKIPPING: Preference already rejected for user {female_user.id} by user {male_user.id}")
+#                 continue
+#             elif other_pref and other_pref.preference == 'reject':
+#                 print(f"SKIPPING: Preference already rejected for user {male_user.id} by user {female_user.id}")
+#                 continue
+
+#             visible_after_timestamp = get_unix_timestamp(datetime.now(timezone.utc) + timedelta(minutes=20))
+
+#             # Create mutual match
+#             new_match = Match(
+#                 user1_id=male_user.id,
+#                 user2_id=female_user.id,
+#                 status='active',
+#                 location_id=location_id,
+#                 visible_after=visible_after_timestamp,
+#                 round_number=current_round,   # ✅ Added
+#             )
+#             db.session.add(new_match)
+#             matches_created += 1
+#             print(
+#                 f"At: {datetime.now(timezone.utc)}, Created mutual match: User {male_user.id} ({male_user.email}) ↔ User {female_user.id} ({female_user.email}), visible after: {visible_after_timestamp}")
+
+#         db.session.commit()
+#         print(f"Automatic matchmaking completed for location {location_id}: {matches_created} matches created")
+
+#         # Return summary for debugging
+#         return {
+#             'location_id': location_id,
+#             'total_users': len(checked_in_users),
+#             'male_users': len(male_users),
+#             'female_users': len(female_users),
+#             'matches_created': matches_created,
+#             'users_left_out': [user.email for user in users_left_out],
+#             'matches_per_user': matches_created // len(male_users) if male_users else 0
+#         }
+
+#     except Exception as e:
+#         print(f"Error in automatic matchmaking: {str(e)}")
+#         db.session.rollback()
+#         return None
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
