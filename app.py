@@ -244,35 +244,35 @@ def hopcroft_karp(males, females, allowed_pairs):
 
     return [(m, f) for m, f in pair_u.items() if f is not None]
 
+
+
 @app.route('/preference', methods=['POST'])
 def set_preference():
     """
     Save user preference and update match status.
-    Automatically ends round if all active matches have preferences.
-    Updates match.consent according to user decisions:
-      - Any reject → consent='deleted'
-      - Both like → consent='active'
-      - Any save_later → consent='pending'
+    - Normal flow (main algorithm): handles round completion & matchmaking.
+    - Matches screen flow (source='matches_screen'): directly updates consent.
     """
     try:
         data = request.get_json()
         user_email = data.get('user_email')
         preferred_user_email = data.get('preferred_user_email')
         preference = data.get('preference')  # 'like', 'reject', 'save_later'
+        source = data.get('source', 'main')  # 'main' or 'matches_screen'
 
-        # Validate inputs
+        # ✅ Input validation
         if not user_email or not preferred_user_email or not preference:
             return jsonify({'error': 'Missing required fields'}), 400
         if preference not in ['like', 'reject', 'save_later']:
             return jsonify({'error': 'Invalid preference type'}), 400
 
-        # Get users
+        # ✅ Get users
         user = Task.query.filter_by(email=user_email).first()
         preferred_user = Task.query.filter_by(email=preferred_user_email).first()
         if not user or not preferred_user:
             return jsonify({'error': 'One or both users not found'}), 404
 
-        # Add or update preference
+        # ✅ Add or update preference
         existing_pref = UserPreference.query.filter_by(
             user_id=user.id,
             preferred_user_id=preferred_user.id
@@ -281,37 +281,60 @@ def set_preference():
             existing_pref.preference = preference
             existing_pref.timestamp = datetime.now(timezone.utc)
         else:
-            new_pref = UserPreference(
+            db.session.add(UserPreference(
                 user_id=user.id,
                 preferred_user_id=preferred_user.id,
                 preference=preference
-            )
-            db.session.add(new_pref)
+            ))
         db.session.commit()
 
-        # Update match consent if needed
-        process_potential_match(user.id, preferred_user.id)
+        # ✅ Update match consent
+        if source == 'matches_screen':
+            # Directly update consent for Matches screen
+            update_match_consent_status(user.id, preferred_user.id)
+        else:
+            # Normal flow for main matchmaking algorithm
+            process_potential_match(user.id, preferred_user.id)
 
-        # Find the current active match
+        db.session.commit()
+
+        # ✅ Fetch the updated match
         match = Match.query.filter(
             or_(
                 and_(Match.user1_id == user.id, Match.user2_id == preferred_user.id),
                 and_(Match.user1_id == preferred_user.id, Match.user2_id == user.id)
             ),
-            Match.status == 'active',
             Match.matched_expired == False
         ).first()
 
+        # ✅ Return early for Matches screen
+        if source == 'matches_screen':
+            if match:
+                db.session.refresh(match)
+                return jsonify({
+                    "message": f"Preference set to {preference} from matches screen",
+                    "match": {
+                        "match_id": match.id,
+                        "status": match.status,
+                        "consent": match.consent,
+                        "user1_id": match.user1_id,
+                        "user2_id": match.user2_id,
+                    }
+                }), 200
+            else:
+                return jsonify({
+                    "message": f"Preference set to {preference}, but no match found"
+                }), 200
+
+        # ✅ Main algorithm: check if round is complete
         if match:
             location_id = match.location_id
             if is_round_complete(location_id):
                 print(f"✅ Round complete for location {location_id}. Ending and starting next round...")
-                
                 end_matchmaking_round(location_id)
-                db.session.commit()  # <-- 🔥 ensure state is flushed and persisted
-
+                db.session.commit()
                 trigger_matchmaking_for_location(location_id)
-                db.session.commit()  # <-- commit new matches as well
+                db.session.commit()
 
                 return jsonify({
                     'message': f'Preference set to {preference}',
@@ -332,9 +355,10 @@ def set_preference():
             }), 200
 
     except Exception as e:
-        print(f"Error in set_preference: {str(e)}")
+        print(f"❌ Error in set_preference: {str(e)}")
         db.session.rollback()
         return jsonify({'error': 'Internal Server Error'}), 500
+
     
 
 def get_previous_pairs(location_id):
@@ -400,14 +424,16 @@ def end_matchmaking_round(location_id):
     db.session.commit()
 
 
+
+# I changed this, be aware!
 def process_potential_match(user1_id, user2_id, location_id=None):
     """
     Update existing match based on user preferences.
     Updates consent: 'deleted', 'active', or 'pending'.
     Only affects the active match for the current round.
-    Status is NEVER changed here.
+    
+    If location_id is provided, it ensures only the current round at that location is considered.
     """
-
     # Fetch user preferences
     pref1 = UserPreference.query.filter_by(user_id=user1_id, preferred_user_id=user2_id).first()
     pref2 = UserPreference.query.filter_by(user_id=user2_id, preferred_user_id=user1_id).first()
@@ -429,32 +455,68 @@ def process_potential_match(user1_id, user2_id, location_id=None):
             match_query = match_query.filter(Match.round_number == location.current_round)
 
     existing_match = match_query.first()
+
     if not existing_match:
         return  # No active match to update
 
-    # Determine consent logic
-    # ❌ Any reject → deleted
+    # Determine consent based on preferences
     if (pref1 and pref1.preference == 'reject') or (pref2 and pref2.preference == 'reject'):
         existing_match.consent = 'deleted'
-
-    # ❤️ Both like → active
     elif (pref1 and pref1.preference == 'like') and (pref2 and pref2.preference == 'like'):
         existing_match.consent = 'active'
-
-    # 💾 One save_later + one like → pending
-    elif (
-        (pref1 and pref1.preference == 'save_later' and pref2 and pref2.preference == 'like') or
-        (pref2 and pref2.preference == 'save_later' and pref1 and pref1.preference == 'like')
-    ):
-        existing_match.consent = 'pending'
-
-    # ⏳ Otherwise (both save_later, or one missing) → pending
     else:
         existing_match.consent = 'pending'
 
-    # 🚫 Never touch status
     db.session.commit()
 
+# New function to update specifically consent variable in matches and preference table
+def update_match_consent_status(user1_id, user2_id):
+    """
+    Standalone function to update the Match.consent field based on both users' preferences.
+    This does NOT depend on Match.status or location_id.
+    It directly interacts with Match and UserPreference tables.
+    """
+
+    try:
+        # Get both user preferences
+        pref1 = UserPreference.query.filter_by(user_id=user1_id, preferred_user_id=user2_id).first()
+        pref2 = UserPreference.query.filter_by(user_id=user2_id, preferred_user_id=user1_id).first()
+
+        # Find any active or pending match between these users
+        match = Match.query.filter(
+            or_(
+                and_(Match.user1_id == user1_id, Match.user2_id == user2_id),
+                and_(Match.user1_id == user2_id, Match.user2_id == user1_id)
+            ),
+            Match.matched_expired == False
+        ).first()
+
+        if not match:
+            print(f"⚠️ No active/pending match found between {user1_id} and {user2_id}")
+            return None
+
+        # --- Consent logic ---
+        if (pref1 and pref1.preference == 'reject') or (pref2 and pref2.preference == 'reject'):
+            match.consent = 'deleted'
+        elif (pref1 and pref1.preference == 'like') and (pref2 and pref2.preference == 'like'):
+            match.consent = 'active'
+        elif (
+            (pref1 and pref1.preference == 'save_later' and pref2 and pref2.preference == 'like') or
+            (pref2 and pref2.preference == 'save_later' and pref1 and pref1.preference == 'like')
+        ):
+            match.consent = 'pending'
+        else:
+            match.consent = 'pending'
+
+        db.session.commit()
+        db.session.refresh(match)
+        print(f"✅ Match {match.id} consent updated to: {match.consent}")
+        return match
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ Error in update_match_consent_status: {str(e)}")
+        return None
 
 
 def trigger_matchmaking_for_location(location_id):
@@ -695,50 +757,57 @@ def update_match_status():
         # Determine other user ID
         other_user_id = match.user2_id if match.user1_id == user.id else match.user1_id
 
-        # Update user preference based on decision
-        if decision == 'accept':
-            pref = UserPreference.query.filter_by(
-                user_id=user.id, preferred_user_id=other_user_id
-            ).first()
+        # ✅ Update user preference based on decision
+        pref = UserPreference.query.filter_by(
+            user_id=user.id, preferred_user_id=other_user_id
+        ).first()
 
+        if decision == 'accept':
             if pref:
                 pref.preference = 'like'
             else:
-                new_pref = UserPreference(
+                db.session.add(UserPreference(
                     user_id=user.id,
                     preferred_user_id=other_user_id,
                     preference='like'
-                )
-                db.session.add(new_pref)
-
-            # Check if this creates a match
-            process_potential_match(user.id, other_user_id)
+                ))
 
         else:  # decision == 'reject'
-            pref = UserPreference.query.filter_by(
-                user_id=user.id, preferred_user_id=other_user_id
-            ).first()
-
             if pref:
                 pref.preference = 'reject'
             else:
-                new_pref = UserPreference(
+                db.session.add(UserPreference(
                     user_id=user.id,
                     preferred_user_id=other_user_id,
                     preference='reject'
-                )
-                db.session.add(new_pref)
-
-            # Mark match as deleted
+                ))
+            # Mark match as deleted if user rejects
             match.status = 'deleted'
+            match.consent = 'deleted'
 
+        # ✅ Commit preference changes first so they're visible to the next query
         db.session.commit()
 
-        return jsonify({'message': f'Match {decision}ed successfully'}), 200
+        # ✅ Now update the match consent logic
+        update_match_consent_status(user.id, other_user_id)
+
+        # Optional: refresh to get the latest consent value
+        db.session.refresh(match)
+
+        print(f"✅ Match {match.id} updated → consent={match.consent}, status={match.status}")
+
+        return jsonify({
+            'message': f'Match {decision}ed successfully',
+            'match_id': match.id,
+            'new_consent': match.consent,
+            'status': match.status
+        }), 200
 
     except Exception as e:
-        print(f"Error in update_match_status: {str(e)}")
+        print(f"❌ Error in update_match_status: {str(e)}")
+        db.session.rollback()
         return jsonify({'error': 'Internal Server Error'}), 500
+
 
 
 def get_match_score(user1_data, user2_data):
