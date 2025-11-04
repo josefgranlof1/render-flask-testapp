@@ -441,6 +441,7 @@ def process_potential_match(user1_id, user2_id, location_id=None):
         if existing_match:
             # Update match status
             existing_match.status = 'active'
+            existing_match.consent = 'active'   # <-- Add this line
             existing_match.visible_after = get_unix_timestamp(datetime.now(timezone.utc) + timedelta(minutes=20))
         else:
             # Create new match with 20 minute delay
@@ -448,7 +449,8 @@ def process_potential_match(user1_id, user2_id, location_id=None):
                 user1_id=user1_id,
                 user2_id=user2_id,
                 visible_after=get_unix_timestamp(datetime.now(timezone.utc) + timedelta(minutes=20)),
-                status='active'
+                status='active',
+                consent='active',
             )
             db.session.add(new_match)
     # Case II: One or both users rejected
@@ -456,6 +458,7 @@ def process_potential_match(user1_id, user2_id, location_id=None):
         if existing_match:
             # Mark match as deleted
             existing_match.status = 'deleted'
+            existing_match.consent = 'deleted'  # <-- Add this line
     # Case III & IV: Save for later scenarios
     elif pref1.preference == 'save_later' or pref2.preference == 'save_later':
         # Only proceed if neither preference is 'reject'
@@ -466,6 +469,7 @@ def process_potential_match(user1_id, user2_id, location_id=None):
                     user1_id=user1_id,
                     user2_id=user2_id,
                     status='pending',
+                    consent='pending',
                     visible_after=get_unix_timestamp(datetime.now(timezone.utc))  # Visible immediately, but pending
                 )
                 db.session.add(new_match)
