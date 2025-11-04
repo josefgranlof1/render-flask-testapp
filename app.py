@@ -406,27 +406,22 @@ def process_potential_match(user1_id, user2_id, location_id=None):
     """
     Update existing match based on user preferences.
     Updates consent: 'deleted', 'active', or 'pending'.
-    Status is updated only for non-expired matches.
+    Only affects the active match for the current round.
     
-    If location_id is provided, ensures only the current round at that location is considered.
+    If location_id is provided, it ensures only the current round at that location is considered.
     """
-    from datetime import datetime, timedelta, timezone
-    from sqlalchemy import or_, and_
-
     # Fetch user preferences
     pref1 = UserPreference.query.filter_by(user_id=user1_id, preferred_user_id=user2_id).first()
     pref2 = UserPreference.query.filter_by(user_id=user2_id, preferred_user_id=user1_id).first()
 
-    if not pref1 or not pref2:
-        # If either preference is missing, nothing to process
-        return
-
-    # Build base query for the match (include expired matches)
+    # Build base query for the match
     match_query = Match.query.filter(
         or_(
             and_(Match.user1_id == user1_id, Match.user2_id == user2_id),
             and_(Match.user1_id == user2_id, Match.user2_id == user1_id)
-        )
+        ),
+        Match.status == 'active',
+        Match.matched_expired == False
     )
 
     # If location_id provided, filter by current round
@@ -437,61 +432,18 @@ def process_potential_match(user1_id, user2_id, location_id=None):
 
     existing_match = match_query.first()
 
-    # Case I: Both users like each other
-    if pref1.preference == 'like' and pref2.preference == 'like':
-        if existing_match:
-            # Update consent always
-            existing_match.consent = 'active'
+    if not existing_match:
+        return  # No active match to update
 
-            # Only reactivate if match is not expired
-            if existing_match.status != 'expired':
-                existing_match.status = 'active'
-                existing_match.visible_after = get_unix_timestamp(
-                    datetime.now(timezone.utc) + timedelta(minutes=20)
-                )
-        else:
-            # Create new active match
-            new_match = Match(
-                user1_id=user1_id,
-                user2_id=user2_id,
-                status='active',
-                consent='active',
-                visible_after=get_unix_timestamp(datetime.now(timezone.utc) + timedelta(minutes=20))
-            )
-            db.session.add(new_match)
+    # Determine consent based on preferences
+    if (pref1 and pref1.preference == 'reject') or (pref2 and pref2.preference == 'reject'):
+        existing_match.consent = 'deleted'
+    elif (pref1 and pref1.preference == 'like') and (pref2 and pref2.preference == 'like'):
+        existing_match.consent = 'active'
+    else:
+        existing_match.consent = 'pending'
 
-    # Case II: One or both users rejected
-    elif pref1.preference == 'reject' or pref2.preference == 'reject':
-        if existing_match:
-            # Update consent
-            existing_match.consent = 'deleted'
-
-            # Only delete status if match is not expired
-            if existing_match.status != 'expired':
-                existing_match.status = 'deleted'
-
-    # Case III & IV: Save for later scenarios
-    elif pref1.preference == 'save_later' or pref2.preference == 'save_later':
-        if pref1.preference != 'reject' and pref2.preference != 'reject':
-            if existing_match:
-                existing_match.consent = 'pending'
-            else:
-                # Create new pending match
-                new_match = Match(
-                    user1_id=user1_id,
-                    user2_id=user2_id,
-                    status='pending',
-                    consent='pending',
-                    visible_after=get_unix_timestamp(datetime.now(timezone.utc))
-                )
-                db.session.add(new_match)
-
-    # Commit the changes to the database
-    try:
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        print(f"[ERROR] Failed to commit match updates: {e}")
+    db.session.commit()
 
 
 def trigger_matchmaking_for_location(location_id):
